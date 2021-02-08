@@ -13,3 +13,7 @@ ssh $SERVER "/srv/phabricator/phabricator/bin/storage dump --compress --no-index
 scp $SERVER:phabbackup.sql.gz .
 gunzip phabbackup.sql.gz
 mysql < phabbackup.sql
+
+# This one takes a while
+rm -rf /srv/phabricator
+ssh $SERVER "tar -zc -C /srv phabricator/repos/" | tar -zx -C /srv
