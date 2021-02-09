@@ -39,6 +39,21 @@
 (defun get-projects ()
  (query "select phid, name, icon from phabricator_project.project"))
 
+(defun get-tasks ()
+ (mapcar
+  (lambda (task)
+   (append
+    (list
+     :projects
+     (mapcar
+      (lambda (result) (get-project (getf result :dst)))
+      (query
+       (format nil
+        "select dst from phabricator_maniphest.edge where src = '~A' and dst like 'PHID-PROJ%'"
+        (getf task :phid)))))
+    task))
+  (query "select * from phabricator_maniphest.maniphest_task")))
+
 (defun get-repositories ()
  (let
   ((repositories (query "select phid, repositoryslug, name from phabricator_repository.repository")))
@@ -81,6 +96,11 @@
   :name (getf user-def :realname)
   :emails (mapcar #'convert-email-to-core (get-emails (getf user-def :phid)))))
 
+(defun convert-task-to-core (task-def)
+ (forgerie-core:make-ticket
+  :id (getf task-def :id)
+  :projects (mapcar #'convert-project-to-core (getf task-def :projects))))
+
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (initialize)
  (list
@@ -89,4 +109,6 @@
   :projects
   (mapcar #'convert-project-to-core (get-projects))
   :vc-repositories
-  (mapcar #'convert-repository-to-core (get-repositories))))
+  (mapcar #'convert-repository-to-core (get-repositories))
+  :tickets
+  (mapcar #'convert-task-to-core (get-tasks))))
