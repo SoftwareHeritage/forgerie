@@ -2,4 +2,5 @@
 
 (defstruct ticket
  id
+ title
  projects)

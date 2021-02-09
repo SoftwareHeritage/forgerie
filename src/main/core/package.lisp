@@ -13,7 +13,7 @@
   #:make-project #:project-name
 
   ; ticket.lisp
-  #:make-ticket #:ticket-id #:ticket-projects
+  #:make-ticket #:ticket-id #:ticket-projects #:ticket-title
 
   ; vc-repository.lisp
   #:make-vc-repository #:vc-repository-name #:vc-repository-slug #:vc-repository-primary-projects #:vc-repository-projects

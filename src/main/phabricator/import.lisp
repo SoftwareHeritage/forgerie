@@ -99,6 +99,7 @@
 (defun convert-task-to-core (task-def)
  (forgerie-core:make-ticket
   :id (getf task-def :id)
+  :title (getf task-def :title)
   :projects (mapcar #'convert-project-to-core (getf task-def :projects))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
