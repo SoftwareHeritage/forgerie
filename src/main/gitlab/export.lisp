@@ -19,8 +19,39 @@
 (defun post-request (path parameters)
  (make-request path :post parameters))
 
+(defun validate-vc-repositories (vc-repositories projects)
+ (every
+  #'identity
+  (list
+   (every #'identity
+    (mapcar
+     (lambda (vcr)
+      (cond
+       ((not (forgerie-core:vc-repository-primary-projects vcr))
+        (format *error-output* "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr))
+        nil)
+       (t)))
+     vc-repositories))
+   (every #'identity
+    (mapcar
+     (lambda (proj)
+      (let
+       ((repos-for-proj (forgerie-core:vc-repositories-with-primary-project proj vc-repositories)))
+       (cond
+        ((< 1 (length repos-for-proj))
+         (format *error-output*
+          "Project ~A is the primary project in multiple repositories:~%~{ * ~A~%~}"
+          (forgerie-core:project-name proj)
+          (mapcar #'forgerie-core:vc-repository-name repos-for-proj))
+         nil)
+        (t))))
+     projects))
+   )))
+
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
- (mapcar #'create-user (getf data :users)))
+ (if (validate-vc-repositories (getf data :vc-repsitories) (getf data :projects))
+  (mapcar #'create-user (getf data :users))
+  (format *error-output* "Unable to export to gitlab, validation failed.~%")))
 
 (defun create-user (user)
  (post-request

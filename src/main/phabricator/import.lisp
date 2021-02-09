@@ -25,29 +25,68 @@
  (format nil "~A@opentechstrategies.com" (cl-ppcre:regex-replace-all "@" address "_")))
 
 (defun get-emails (user-phid)
- (let
-  ((result (query (format nil "select * from user_email where userphid = '~A'" user-phid))))
-  (mapcar 
-   (lambda (result)
-    (forgerie-core:make-email
-     :address (sanitize-address (getf result :address))
-     :is-primary (eql (getf result :isprimary) 1)))
-   result)))
+ (query (format nil "select * from phabricator_user.user_email where userphid = '~A'" user-phid)))
+
+(defun get-user (phid)
+ (query "select username, realName from phabricator_user.user where phid = '~A'" phid))
 
 (defun get-users ()
- (cl-mysql:use "phabricator_user")
- (mapcar
-  (lambda (user-def)
-   (let
-    ((user (forgerie-core:make-user)))
-    (setf (forgerie-core:user-username user) (getf user-def :username))
-    (setf (forgerie-core:user-name user) (getf user-def :realname))
-    (setf (forgerie-core:user-emails user) (get-emails (getf user-def :phid)))
-    user))
-  (query "select phid, username, realName from user")))
+ (query "select username, realName from phabricator_user.user"))
+
+(defun get-project (phid)
+ (first (query (format nil "select phid, name, icon from phabricator_project.project where phid = '~A'" phid))))
+
+(defun get-projects ()
+ (query "select phid, name, icon from phabricator_project.project"))
+
+(defun get-repositories ()
+ (let
+  ((repositories (query "select phid, repositoryslug, name from phabricator_repository.repository")))
+  (mapcar
+   (lambda (repo)
+    (let
+     ((associated-projects
+       (mapcar #'get-project
+        (mapcar
+         (lambda (result) (getf result :dst))
+         (query
+          (format nil
+           "select * from phabricator_repository.edge where src = '~A' and dst like 'PHID-PROJ%'"
+           (getf repo :phid)))))))
+     (append
+      (list :primary-projects (remove-if-not (lambda (project) (string= "folder" (getf project :icon))) associated-projects))
+      (list :projects associated-projects)
+      repo)))
+   repositories)))
+
+(defun convert-repository-to-core (repository-def)
+ (forgerie-core:make-vc-repository
+  :name (getf repository-def :name)
+  :slug (getf repository-def :repositoryslug)
+  :projects (mapcar #'convert-project-to-core (getf repository-def :projects))
+  :primary-projects (mapcar #'convert-project-to-core (getf repository-def :primary-projects))))
+
+(defun convert-project-to-core (project-def)
+ (forgerie-core:make-project
+  :name (getf project-def :name)))
+
+(defun convert-email-to-core (email-def)
+ (forgerie-core:make-email
+  :address (sanitize-address (getf email-def :address))
+  :is-primary (eql (getf email-def :isprimary) 1)))
+
+(defun convert-user-to-core (user-def)
+ (forgerie-core:make-user
+  :username (getf user-def :username)
+  :name (getf user-def :realname)
+  :emails (mapcar #'convert-email-to-core (get-emails (getf user-def :phid)))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (initialize)
  (list
   :users
-  (get-users)))
+  (mapcar #'convert-user-to-core (get-users))
+  :projects
+  (mapcar #'convert-project-to-core (get-projects))
+  :vc-repositories
+  (mapcar #'convert-repository-to-core (get-repositories))))

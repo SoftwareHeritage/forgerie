@@ -11,6 +11,10 @@
      :components
      ((:file "package")
       (:file "user")
+      (:file "project")
+      (:file "vc-repository")
+      (:file "ticket")
+      (:file "utils")
       (:file "run")))
     (:module "phabricator"
      :components
