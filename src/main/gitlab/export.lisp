@@ -20,32 +20,36 @@
  (make-request path :post parameters))
 
 (defun validate-vc-repositories (vc-repositories projects)
- (every
-  #'identity
-  (list
-   (every #'identity
-    (mapcar
-     (lambda (vcr)
-      (cond
-       ((not (forgerie-core:vc-repository-primary-projects vcr))
-        (format *error-output* "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr))
-        nil)
-       (t)))
-     vc-repositories))
-   (every #'identity
+ (let
+  ((valid-projects
     (mapcar
      (lambda (proj)
       (let
        ((repos-for-proj (forgerie-core:vc-repositories-with-primary-project proj vc-repositories)))
        (cond
         ((< 1 (length repos-for-proj))
-         (format *error-output*
+         (format *standard-output*
           "Project ~A is the primary project in multiple repositories:~%~{ * ~A~%~}"
           (forgerie-core:project-name proj)
           (mapcar #'forgerie-core:vc-repository-name repos-for-proj))
          nil)
-        (t))))
-     projects)))))
+        (proj))))
+     projects)))
+  (remove
+   nil
+   (mapcar
+    (lambda (vcr)
+     (cond
+      ((not (forgerie-core:vc-repository-primary-projects vcr))
+       (format *error-output* "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr))
+       nil)
+      ((not
+        (remove-if-not
+         (lambda (proj) (find proj valid-projects :test #'equalp))
+         (forgerie-core:vc-repository-primary-projects vcr)))
+       nil)
+      (vcr)))
+    vc-repositories))))
 
 ; This assumes that validate-vc-repositories passed, which is to say
 ; that every project of interest belongs to only one repository, and that
@@ -62,8 +66,8 @@
          (lambda (proj) (forgerie-core:vc-repositories-with-primary-project proj vc-repositories))
          (forgerie-core:ticket-projects ticket)))
        :test #'equalp)))))
-  (every
-   #'identity
+  (remove
+   nil
    (mapcar
     (lambda (ticket)
      (let
@@ -76,16 +80,14 @@
          "Ticket with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
          (forgerie-core:ticket-id ticket)
          (mapcar #'forgerie-core:vc-repository-name vc-repos)))
-       (t))))
+       (ticket))))
     tickets))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
- (if
-  (and
-   (validate-vc-repositories (getf data :vc-repsitories) (getf data :projects))
-   (validate-tickets (getf data :vc-repsitories) (getf data :projects)))
-  (mapcar #'create-user (getf data :users))
-  (format *error-output* "Unable to export to gitlab, validation failed.~%")))
+ (let
+  ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
+   (tickets (validate-tickets (getf data :tickets) (getf data :vc-repositories))))
+  (mapcar #'create-user (getf data :users))))
 
 (defun create-user (user)
  (post-request

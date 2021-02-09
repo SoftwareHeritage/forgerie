@@ -31,7 +31,7 @@
  (query "select username, realName from phabricator_user.user where phid = '~A'" phid))
 
 (defun get-users ()
- (query "select username, realName from phabricator_user.user"))
+ (query "select username, realName, phid from phabricator_user.user"))
 
 (defun get-project (phid)
  (first (query (format nil "select phid, name, icon from phabricator_project.project where phid = '~A'" phid))))
