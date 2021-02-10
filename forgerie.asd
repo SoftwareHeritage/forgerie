@@ -10,10 +10,12 @@
    ((:module "core"
      :components
      ((:file "package")
+      (:file "base")
       (:file "user")
       (:file "project")
       (:file "vc-repository")
       (:file "ticket")
+      (:file "snippet")
       (:file "utils")
       (:file "run")))
     (:module "phabricator"

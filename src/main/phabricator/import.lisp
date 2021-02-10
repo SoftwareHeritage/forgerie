@@ -74,6 +74,47 @@
       repo)))
    repositories)))
 
+(defun get-file (file-phid)
+ (let*
+  ((file
+    (first
+     (query
+      (format nil "select name, storageEngine, storageFormat, storageHandle from phabricator_file.file where phid = '~A'"
+       file-phid)))))
+  (append
+   file
+   (list
+    :data
+    (cond
+     ((and
+       (string= "blob" (getf file :storageengine))
+       (string= "raw" (getf file :storageformat)))
+      (map 'string #'code-char
+       (getf
+        (first
+         (query
+          (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
+           (getf file :storagehandle))))
+        :data)))
+     (t
+      (error
+       "Don't know how to handle files of with engine/format of ~A/~A encounted on ~A"
+       (getf file :storageengine)
+       (getf file :storageformat)
+       file-phid)))))))
+
+(defun get-pastes ()
+ (remove
+  nil
+  (mapcar
+   (lambda (paste)
+    (let
+     ; ignore-errors here is due to the nature of the data we're working with,
+     ; and should probably get removed later on
+     ((file (ignore-errors (get-file (getf paste :filephid)))))
+     (when file (append (list :file file) paste))))
+   (query "select id, title, filePHID from phabricator_paste.paste"))))
+
 (defun convert-repository-to-core (repository-def)
  (forgerie-core:make-vc-repository
   :name (getf repository-def :name)
@@ -102,6 +143,17 @@
   :title (getf task-def :title)
   :projects (mapcar #'convert-project-to-core (getf task-def :projects))))
 
+(defun convert-file-to-core (file-def)
+ (forgerie-core:make-file
+  :name (getf file-def :name)
+  :data (getf file-def :data)))
+
+(defun convert-paste-to-core (paste-def)
+ (forgerie-core:make-snippet
+  :id (getf paste-def :id)
+  :title (getf paste-def :title)
+  :files (list (convert-file-to-core (getf paste-def :file)))))
+
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (initialize)
  (list
@@ -111,5 +163,7 @@
   (mapcar #'convert-project-to-core (get-projects))
   :vc-repositories
   (mapcar #'convert-repository-to-core (get-repositories))
+  :snippets
+  (mapcar #'convert-paste-to-core (get-pastes))
   :tickets
   (mapcar #'convert-task-to-core (get-tasks))))

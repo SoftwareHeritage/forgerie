@@ -110,9 +110,10 @@
  (let
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
    (tickets (validate-tickets (getf data :tickets) (getf data :vc-repositories))))
-  ;(mapcar #'create-user (getf data :users))
+  (mapcar #'create-user (getf data :users))
   (mapcar #'create-project vc-repositories)
-  (mapcar (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)))
+  (mapcar (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
+  (mapcar #'create-snippet (getf data :snippets))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
@@ -136,3 +137,20 @@
     ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
     ("reset_password" . "true")
     ("username" . ,(forgerie-core:user-username user)))))
+
+(defun create-snippet (snippet)
+ (when
+  (/= 1 (length (forgerie-core:snippet-files snippet)))
+  (error "Can only export snippets with exactly one file for now"))
+ (let
+  ((file (first (forgerie-core:snippet-files snippet))))
+  (post-request
+   "snippets"
+   ; This is deprecated, but it's an easier interface for now.  Someday we may have
+   ; an importer that has more than one file, or gitlab may fully remove this, and
+   ; then this code will need to be updated
+   ;
+   ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
+  `(("title" . ,(forgerie-core:snippet-title snippet))
+    ("content" . ,(forgerie-core:file-data file))
+    ("file_name" . ,(forgerie-core:file-name file))))))
