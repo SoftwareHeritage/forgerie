@@ -35,6 +35,9 @@
 (defun post-request (path parameters)
  (make-request path :post parameters))
 
+(defun put-request (path parameters)
+ (make-request path :put parameters))
+
 (defun validate-vc-repositories (vc-repositories projects)
  (let
   ((valid-projects
@@ -122,7 +125,8 @@
  (post-request
   "projects"
   `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
-    ("path" . ,(forgerie-core:vc-repository-slug vc-repository)))))
+    ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+    ("import_url" . ,(forgerie-core:vc-repository-git-location vc-repository)))))
 
 (defun create-ticket (ticket vc-repositories)
  (post-request

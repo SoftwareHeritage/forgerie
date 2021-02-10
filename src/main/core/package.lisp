@@ -20,6 +20,7 @@
 
   ; vc-repository.lisp
   #:make-vc-repository #:vc-repository-name #:vc-repository-slug #:vc-repository-primary-projects #:vc-repository-projects
+  #:vc-repository-git-location
 
   ; snippet.lisp
   #:make-snippet #:snippet-id #:snippet-title #:snippet-files

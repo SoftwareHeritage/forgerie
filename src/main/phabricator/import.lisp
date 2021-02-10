@@ -56,7 +56,7 @@
 
 (defun get-repositories ()
  (let
-  ((repositories (query "select phid, repositoryslug, name from phabricator_repository.repository")))
+  ((repositories (query "select phid, repositoryslug, name, localpath from phabricator_repository.repository")))
   (mapcar
    (lambda (repo)
     (let
@@ -120,7 +120,11 @@
   :name (getf repository-def :name)
   :slug (getf repository-def :repositoryslug)
   :projects (mapcar #'convert-project-to-core (getf repository-def :projects))
-  :primary-projects (mapcar #'convert-project-to-core (getf repository-def :primary-projects))))
+  :primary-projects (mapcar #'convert-project-to-core (getf repository-def :primary-projects))
+  :git-location
+  (format nil "~A~A"
+   *git-location*
+   (car (last (pathname-directory (pathname (getf repository-def :localpath))))))))
 
 (defun convert-project-to-core (project-def)
  (forgerie-core:make-project

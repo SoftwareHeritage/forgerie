@@ -17,4 +17,5 @@
  ; projects, and that's left open to the forgerie for a given forge to
  ; declare.
  primary-projects
+ git-location
  projects)
