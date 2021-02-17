@@ -15,6 +15,7 @@
       (:file "project")
       (:file "vc-repository")
       (:file "ticket")
+      (:file "merge-request")
       (:file "snippet")
       (:file "utils")
       (:file "run")))
@@ -30,4 +31,4 @@
       (:file "export")))))
   (:module "config"
    :components ((:file "config"))))
- :depends-on (:cl-mysql :drakma :jsown :cl-ppcre))
+ :depends-on (:cl-mysql :drakma :jsown :cl-ppcre :cl-csv))

@@ -8,6 +8,9 @@
 
   ; base.lisp
   #:make-file #:file-name #:file-data
+  #:make-commit #:commit-sha
+  #:make-patch #:patch-diff
+  #:make-branch #:branch-name #:branch-commit
 
   ; user.lisp
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
@@ -24,6 +27,10 @@
 
   ; snippet.lisp
   #:make-snippet #:snippet-id #:snippet-title #:snippet-files
+
+  ; merge-request.lisp
+  #:make-merge-request #:merge-request-vc-repository #:merge-request-title #:merge-request-description
+  #:merge-request-source-branch #:merge-request-target-branch #:merge-request-commits #:merge-request-patch
 
   ; utils.lisp
   #:vc-repositories-with-primary-project))
