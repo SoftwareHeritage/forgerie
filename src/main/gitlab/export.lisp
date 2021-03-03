@@ -29,6 +29,23 @@
       :method method
       :parameters parameters))))))
 
+(defun git-cmd (project cmd &rest args)
+ (with-output-to-string (out)
+  (sb-ext:run-program "/usr/bin/git"
+   (append
+    (list
+     "-C"
+     (format nil "~A~A" *checkout-path* (getf project :path))
+     "-c"
+     "user.name=root"
+     "-c"
+     (format nil "user.password=~A" *root-password*)
+     cmd)
+    args)
+   :output out
+   :error out
+   :wait t)))
+
 (defun get-request (path &optional parameters)
  (make-request path :get parameters))
 
@@ -157,27 +174,38 @@
     ("reset_password" . "true")
     ("username" . ,(forgerie-core:user-username user)))))
 
+(defun create-local-checkout (project)
+ (when (not (probe-file (format nil "~A~A" *checkout-path* (getf project :path))))
+  (ensure-directories-exist *checkout-path*)
+  (git-cmd project "clone" (getf project :http_url_to_repo))))
+
 (defun create-merge-request (mr)
  (let*
   ((project-name
     (forgerie-core:vc-repository-name
      (forgerie-core:merge-request-vc-repository
       mr)))
-   (project (find-project-by-name project-name))
-   (checkout-path (format nil "/tmp/forgerie/~A/" (getf project :path))))
-  (ensure-directories-exist checkout-path)
-  (sb-ext:run-program "/usr/bin/git"
-   (list
-    (format nil "--git-dir=~A" checkout-path)
-    "-c"
-    "user.name=root"
-    "-c"
-    (format nil "user.password=~A" *root-password*)
-    "clone"
-    (getf project :http_url_to_repo))
-   :output t
-   :wait t
-   )))
+   (project (find-project-by-name project-name)))
+  (create-local-checkout project)
+  (git-cmd project "branch"
+   (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
+   (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+  (git-cmd project "branch"
+   (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
+   (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+  (git-cmd project "checkout"
+   (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+  (mapcar
+   (lambda (commit)
+    (git-cmd project "merge" (forgerie-core:commit-sha commit)))
+   (forgerie-core:merge-request-changes mr))
+  (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+  (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+  (post-request
+   (format nil "projects/~A/merge_requests" (getf project :id))
+   `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+     ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+     ("title" . ,(forgerie-core:merge-request-title mr))))))
 
 (defun create-snippet (snippet)
  (when

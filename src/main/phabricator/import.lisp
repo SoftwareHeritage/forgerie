@@ -416,11 +416,11 @@
     :name
     ; Defaults to master, but that may be wrong after more investigation
     (if (eql :open type) "master" (format nil "generated-differential-D~A-target" (differential-revision-id revision-def)))
-    :commit (convert-commit-to-core (car (last (differential-revision-related-commits revision-def)))))
+    :commit (convert-commit-to-core (car (repository-commit-parents (car (last (differential-revision-related-commits revision-def)))))))
    :source-branch
    (forgerie-core:make-branch
     :name (format nil "generated-differential-D~A-source" (differential-revision-id revision-def))
-    :commit (convert-commit-to-core (car (last (differential-revision-related-commits revision-def)))))
+    :commit (convert-commit-to-core (car (repository-commit-parents (car (last (differential-revision-related-commits revision-def)))))))
    :changes (mapcar #'convert-commit-to-core (differential-revision-related-commits revision-def)))))
 
 (defun convert-repository-to-core (repository-def)
@@ -430,9 +430,9 @@
   :projects (mapcar #'convert-project-to-core (repository-projects repository-def))
   :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
   :git-location
-  (format nil "~A~A"
+  (format nil "~A~A.git"
    *git-location*
-   (car (last (pathname-directory (pathname (repository-localpath repository-def))))))))
+   (repository-repositoryslug repository-def))))
 
 (defun convert-project-to-core (project-def)
  (forgerie-core:make-project
