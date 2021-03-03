@@ -22,6 +22,7 @@
     (:module "phabricator"
      :components
      ((:file "package")
+      (:file "utils")
       (:file "base")
       (:file "import")))
     (:module "gitlab"

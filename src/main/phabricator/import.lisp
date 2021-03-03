@@ -1,18 +1,52 @@
 (in-package #:forgerie-phabricator)
 
+; This is really a stepping stone to more structured data, but nice
+; while what we're getting out of the database and whatnot is more fluid.
+(defmacro getf-convenience (type &rest fields)
+`(progn
+,@(mapcar
+   (lambda (field)
+   `(defun ,(intern (format nil "~A-~A" type field)) (o)
+     (getf o ,(intern (symbol-name field) :keyword))))
+   fields)))
+
+(getf-convenience differential-diff id)
+(getf-convenience differential-revision id title summary phid status repositoryphid datecreated)
+(getf-convenience edge dst)
+(getf-convenience email address isprimary)
+(getf-convenience file storageengine storageformat storagehandle name data)
+(getf-convenience file-storageblob data)
+(getf-convenience paste id title filephid file)
+(getf-convenience project phid icon name)
+(getf-convenience project-slug slug)
+(getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
+(getf-convenience repository-commit id phid repositoryid commitidentifier parents raw-diff patch)
+(getf-convenience task id phid title projects)
+(getf-convenience user username realname phid)
+(getf-convenience differential-revision id title summary phid status repository repositoryphid datecreated related-commits)
+
+(defvar *query-cache* nil)
+
 (defun query (query)
- (let*
-  ((result (car (cl-mysql:query query)))
-   (rows (car result))
-   (definitions (cadr result)))
-  (mapcar
-   (lambda (row)
-    (apply #'append
-     (mapcar
-      (lambda (col def)
-       (list (intern (string-upcase (car def)) :keyword) col))
-      row definitions)))
-  rows)))
+ (when (not (assoc query *query-cache* :test #'string=))
+  (setf *query-cache*
+   (cons
+    (cons
+     query
+     (let*
+      ((result (car (cl-mysql:query query)))
+       (rows (car result))
+       (definitions (cadr result)))
+      (mapcar
+       (lambda (row)
+        (apply #'append
+         (mapcar
+          (lambda (col def)
+           (list (intern (string-upcase (car def)) :keyword) col))
+          row definitions)))
+      rows)))
+    *query-cache*)))
+ (cdr (assoc query *query-cache* :test #'string=)))
 
 (defun initialize ()
  (cl-mysql:connect :password *database-password*)
@@ -37,9 +71,8 @@
  (append
   (list
    :tags
-   (mapcar
-    (lambda (rslt) (getf rslt :slug))
-    (query (format nil "select slug from phabricator_project.project_slug where projectphid = '~A'" (getf proj :phid)))))
+   (mapcar #'project-slug-slug
+    (query (format nil "select slug from phabricator_project.project_slug where projectphid = '~A'" (project-phid proj)))))
   proj))
 
 (defun get-project (phid)
@@ -58,27 +91,26 @@
     task
     (list
      :projects
-     (mapcar
-      (lambda (result) (get-project (getf result :dst)))
-      (query
-       (format nil
-        "select dst from phabricator_maniphest.edge where src = '~A' and dst like 'PHID-PROJ%'"
-        (getf task :phid)))))))
+     (mapcar #'get-project
+      (mapcar #'edge-dst
+       (query
+        (format nil
+         "select dst from phabricator_maniphest.edge where src = '~A' and dst like 'PHID-PROJ%'"
+         (task-phid task))))))))
   (query "select * from phabricator_maniphest.maniphest_task")))
 
 (defun attach-projects-to-repository (repo)
  (let
   ((associated-projects
     (mapcar #'get-project
-     (mapcar
-      (lambda (result) (getf result :dst))
+     (mapcar #'edge-dst
       (query
        (format nil
         "select * from phabricator_repository.edge where src = '~A' and dst like 'PHID-PROJ%'"
-        (getf repo :phid)))))))
+        (repository-phid repo)))))))
   (append
    repo
-   (list :primary-projects (remove-if-not (lambda (project) (string= "folder" (getf project :icon))) associated-projects))
+   (list :primary-projects (remove-if-not (lambda (project) (string= "folder" (project-icon project))) associated-projects))
    (list :projects associated-projects))))
 
 (defun get-repository (phid)
@@ -115,20 +147,19 @@
     :data
     (cond
      ((and
-       (string= "blob" (getf file :storageengine))
-       (string= "raw" (getf file :storageformat)))
+       (string= "blob" (file-storageengine file))
+       (string= "raw" (file-storageformat file)))
       (map 'string #'code-char
-       (getf
+       (file-storageblob-data
         (first
          (query
           (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
-           (getf file :storagehandle))))
-        :data)))
+           (file-storagehandle file)))))))
      (t
       (error
        "Don't know how to handle files of with engine/format of ~A/~A encounted on ~A"
-       (getf file :storageengine)
-       (getf file :storageformat)
+       (file-storageengine file)
+       (file-storageformat file)
        file-phid)))))))
 
 (defun get-pastes ()
@@ -139,7 +170,7 @@
     (let
      ; ignore-errors here is due to the nature of the data we're working with,
      ; and should probably get removed later on
-     ((file (ignore-errors (get-file (getf paste :filephid)))))
+     ((file (ignore-errors (get-file (paste-filephid paste)))))
      (when file (append (list :file file) paste))))
    (query "select id, title, filePHID from phabricator_paste.paste"))))
 
@@ -157,30 +188,29 @@
     (if with-parents
      (mapcar
       (lambda (parent-phid) (get-commit parent-phid nil))
-      (mapcar
-       (lambda (ref) (getf ref :phid))
+      (mapcar #'repository-commit-phid
        (query
         (format nil
-         "select phid
+         "select rc.phid
              from phabricator_repository.repository_parents rp
              join phabricator_repository.repository_commit rc on rp.parentcommitid = rc.id
              where childcommitid = '~A'"
-         (getf commit :id)))))
+         (repository-commit-id commit)))))
      :unfetched)))))
 
 (defun order-related-commits (commits)
- (when (find-if (lambda (commit) (< 1 (length (getf commit :parents)))) commits)
+ (when (find-if (lambda (commit) (< 1 (length (repository-commit-parents commit)))) commits)
   (error "There's a merge commit in the differential commit list?!  Investigate further"))
  (cond
   ((not commits) nil)
   ((= 1 (length commits)) commits)
   (t
    (let*
-    ((parents (apply #'append (mapcar (lambda (commit) (getf commit :parents)) commits)))
+    ((parents (apply #'append (mapcar #'repository-commit-parents commits)))
      (non-parent-commits
       (remove-if
        (lambda (commit)
-        (find (getf commit :commitidentifier) parents :key (lambda (parent) (getf parent :commitidentifier)) :test #'string=))
+        (find (repository-commit-commitidentifier commit) parents :key #'repository-commit-commitidentifier :test #'string=))
        commits)))
     (when (< 1 (length non-parent-commits))
      (format t "~S~%" non-parent-commits)
@@ -191,22 +221,22 @@
 
 (defun get-commits-from-db (revision)
  (let
-  ((repository (get-repository (getf revision :repositoryphid))))
+  ((repository (get-repository (differential-revision-repositoryphid revision))))
   (order-related-commits
    (remove-if
     (lambda (commit)
      (or
-      (not (eql (getf commit :repositoryid) (getf repository :id)))
+      (not (eql (repository-commit-repositoryid commit) (repository-id repository)))
       ; Is this commit reachable?
       (not
        (zerop
         (sb-ext:process-exit-code
          (sb-ext:run-program "/usr/bin/git"
           (list
-           (format nil "--git-dir=~A" (getf repository :localpath))
+           (format nil "--git-dir=~A" (repository-localpath repository))
            "cat-file"
            "-t"
-           (getf commit :commitidentifier))
+           (repository-commit-commitidentifier commit))
           :wait t))))
       (string=
        (format nil "undefined~%")
@@ -214,37 +244,43 @@
         (sb-ext:process-exit-code
          (sb-ext:run-program "/usr/bin/git"
           (list
-           (format nil "--git-dir=~A" (getf repository :localpath))
+           (format nil "--git-dir=~A" (repository-localpath repository))
            "name-rev"
            "--name-only"
-           (getf commit :commitidentifier))
+           (repository-commit-commitidentifier commit))
           :wait t
           :output out))))
       ; Remove merge commits
-      (< 1 (length (getf commit :parents)))))
+      (< 1 (length (repository-commit-parents commit)))))
     (mapcar #'get-commit
-     (mapcar
-      (lambda (edge) (getf edge :dst))
+     (mapcar #'edge-dst
       ; type of 31 is the same as DifferentialRevisionHasCommitEdgeType
-      (query (format nil "select dst from phabricator_differential.edge where src = '~A' and type = 31" (getf revision :phid)))))))))
+      (query (format nil "select dst from phabricator_differential.edge where src = '~A' and type = 31"
+              (differential-revision-phid revision)))))))))
 
-(defvar *sha-detail-cache* nil)
+(defvar *sha-detail-cache*
+ (when (probe-file "~/shadetailcache") (with-open-file (str "~/shadetailcache" :direction :input) (read str nil))))
+
+(defun save-details ()
+ (with-open-file (str "~/shadetailcache" :direction :output :if-exists :supersede)
+  (format str "~S" *sha-detail-cache*)))
+
 
 (defun get-details (repository sha)
  (with-output-to-string (out)
   (sb-ext:run-program (asdf:system-relative-pathname :forgerie "bin/getdetails.sh")
-  (list sha (getf repository :localpath))
+  (list sha (repository-localpath repository))
   :wait t
   :output out)))
 
 (defun get-shas-and-details (repository)
  (when
-  (not (assoc (getf repository :phid) *sha-detail-cache* :test #'string=))
+  (not (assoc (repository-phid repository) *sha-detail-cache* :test #'string=))
   (setf
    *sha-detail-cache*
    (cons
     (cons
-     (getf repository :phid)
+     (repository-phid repository)
      (mapcar
       (lambda (sha) (list sha (get-details repository sha)))
       (cl-ppcre:split
@@ -252,24 +288,24 @@
        (with-output-to-string (out)
         (sb-ext:run-program "/usr/bin/git"
          (list
-          (format nil "--git-dir=~A" (getf repository :localpath))
+          (format nil "--git-dir=~A" (repository-localpath repository))
           "log"
           "--all"
           "--pretty=%H")
          :wait t
          :output out)))))
     *sha-detail-cache*)))
- (cdr (assoc (getf repository :phid) *sha-detail-cache* :test #'string=)))
+ (cdr (assoc (repository-phid repository) *sha-detail-cache* :test #'string=)))
 
 (defun get-commits-from-staging (revision)
  (let*
   ((staging-repository (get-repository "PHID-REPO-cuxcaqw5u7vepi4b4bpg"))
-   (repository (get-repository (getf revision :repositoryphid)))
+   (repository (get-repository (differential-revision-repositoryphid revision)))
    (latest-diff
     (first
      (query
       (format nil "select id from phabricator_differential.differential_diff where revisionid = '~A' order by id desc limit 1"
-       (getf revision :id)))))
+       (differential-revision-id revision)))))
    (all-shas-and-details (get-shas-and-details repository)))
   (labels
    ((build-commit-chain (diff-id &optional (n 0))
@@ -280,14 +316,14 @@
       ((diff-details (get-details staging-repository (format nil "phabricator/diff/~A~~~A" diff-id n)))
        (repo-details (find diff-details all-shas-and-details :test #'string= :key #'cadr)))
       (if repo-details
-       (list :commitidentifier (car repo-details) :repository repository)
+       (list (list :commitidentifier (car repo-details) :repository repository))
        (cons
         (list
          :patch
          (with-output-to-string (out)
           (sb-ext:run-program "/usr/bin/git"
            (list
-            (format nil "--git-dir=~A" (getf staging-repository :localpath))
+            (format nil "--git-dir=~A" (repository-localpath staging-repository))
             "format-patch"
             "-k"
             "-1"
@@ -296,7 +332,7 @@
            :wait t
            :output out)))
        (build-commit-chain diff-id (1+ n)))))))
-   (build-commit-chain (getf latest-diff :id)))))
+   (build-commit-chain (differential-diff-id latest-diff)))))
 
 (defun build-raw-commit (revision)
  (let
@@ -305,18 +341,18 @@
      (format nil
       "~A/D~A?download=true"
       *phabricator-location*
-      (getf revision :id))))
+      (differential-revision-id revision))))
    (parent-commit-sha
     (cl-ppcre:regex-replace-all
      "\\s"
      (with-output-to-string (out)
       (sb-ext:run-program "/usr/bin/git"
        (list
-        (format nil "--git-dir=~A" (getf (getf revision :repository) :localpath))
+        (format nil "--git-dir=~A" (repository-localpath (differential-revision-repository revision)))
         "rev-list"
         "-1"
         (multiple-value-bind
-         (s m h day mon year) (decode-universal-time (unix-to-universal-time (getf revision :datecreated)))
+         (s m h day mon year) (decode-universal-time (unix-to-universal-time (differential-revision-datecreated revision)))
          (declare (ignore s m h))
          (format nil "--before='~A/~A/~A'" mon day year))
         ; Default to master branch, but may need to change later
@@ -324,19 +360,20 @@
        :output out))
      "")))
   (list
-   :repositoryid (getf (getf revision :repository) :id)
-   :raw-diff raw-diff
-   :parents
    (list
+    :repositoryid (repository-id (differential-revision-repository revision))
+    :raw-diff raw-diff
+    :parents
     (list
-     :repositoryid (getf (getf revision :repository) :id)
-     :commitidentifier parent-commit-sha)))))
+     (list
+      :repositoryid (repository-id (differential-revision-repository revision))
+      :commitidentifier parent-commit-sha))))))
 
 (defun get-revisions ()
  (mapcar
   (lambda (rev)
    (let
-    ((repository (get-repository (getf rev :repositoryphid))))
+    ((repository (get-repository (differential-revision-repositoryphid rev))))
     (append
      rev
      (list :related-commits
@@ -346,88 +383,88 @@
        (build-raw-commit rev)))
      (list :repository repository))))
   (remove-if
-   (lambda (rev) (find (getf rev :id) *revisions-to-skip*))
-   (query "select id, title, summary, phid, status, repositoryphid, datecreated from phabricator_differential.differential_revision"))))
+   (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
+   ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
+   (query "select id, title, summary, phid, status, repositoryphid, datecreated from phabricator_differential.differential_revision where id > 4700"))))
 
 (defun convert-commit-to-core (commit)
  (cond
-  ((getf commit :commitidentifier)
-   (forgerie-core:make-commit :sha (getf commit :commitidentifier)))
-  ((getf commit :raw-diff)
-   (forgerie-core:make-patch :diff (getf commit :raw-diff)))
-  ((getf commit :patch)
-   (forgerie-core:make-patch :diff (getf commit :patch)))))
+  ((repository-commit-commitidentifier commit)
+   (forgerie-core:make-commit :sha (repository-commit-commitidentifier commit)))
+  ((repository-commit-raw-diff commit)
+   (forgerie-core:make-patch :diff (repository-commit-raw-diff commit)))
+  ((repository-commit-patch commit)
+   (forgerie-core:make-patch :diff (repository-commit-patch commit)))))
 
 (defun convert-revision-to-core (revision-def)
  (let
   ((type
     (cond
-     ((find (getf revision-def :status) (list "published" "abandoned") :test #'string=)
+     ((find (differential-revision-status revision-def) (list "published" "abandoned") :test #'string=)
       :closed)
-     ((find (getf revision-def :status) (list "changes-planned" "needs-review" "needs-revision") :test #'string=)
+     ((find (differential-revision-status revision-def) (list "changes-planned" "needs-review" "needs-revision" "accepted") :test #'string=)
       :open)
-     (t (error "Unknown revision type: ~A" (getf revision-def :status))))))
+     (t (error "Unknown revision type: ~A" (differential-revision-status revision-def))))))
 
   (forgerie-core:make-merge-request
-   :title (getf revision-def :title)
-   :description (map 'string #'code-char (getf revision-def :summary))
-   :vc-repository (convert-repository-to-core (getf revision-def :repository))
+   :title (differential-revision-title revision-def)
+   :description (map 'string #'code-char (differential-revision-summary revision-def))
+   :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
    :type type
    :target-branch
    (forgerie-core:make-branch
     :name
     ; Defaults to master, but that may be wrong after more investigation
-    (if (eql :open type) "master" (format nil "generated-differential-D~A-target" (getf revision-def :id)))
-    :commit (convert-commit-to-core (car (last (getf revision-def :related-commits)))))
+    (if (eql :open type) "master" (format nil "generated-differential-D~A-target" (differential-revision-id revision-def)))
+    :commit (convert-commit-to-core (car (last (differential-revision-related-commits revision-def)))))
    :source-branch
    (forgerie-core:make-branch
-    :name (format nil "generated-differential-D~A-source" (getf revision-def :id))
-    ; We don't need
-    :commit (convert-commit-to-core (car (last (getf revision-def :related-commits)))))
-   :changes (mapcar #'convert-commit-to-core (getf revision-def :related-commits)))))
+    :name (format nil "generated-differential-D~A-source" (differential-revision-id revision-def))
+    :commit (convert-commit-to-core (car (last (differential-revision-related-commits revision-def)))))
+   :changes (mapcar #'convert-commit-to-core (differential-revision-related-commits revision-def)))))
 
 (defun convert-repository-to-core (repository-def)
  (forgerie-core:make-vc-repository
-  :name (getf repository-def :name)
-  :slug (getf repository-def :repositoryslug)
-  :projects (mapcar #'convert-project-to-core (getf repository-def :projects))
-  :primary-projects (mapcar #'convert-project-to-core (getf repository-def :primary-projects))
+  :name (repository-name repository-def)
+  :slug (repository-repositoryslug repository-def)
+  :projects (mapcar #'convert-project-to-core (repository-projects repository-def))
+  :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
   :git-location
   (format nil "~A~A"
    *git-location*
-   (car (last (pathname-directory (pathname (getf repository-def :localpath))))))))
+   (car (last (pathname-directory (pathname (repository-localpath repository-def))))))))
 
 (defun convert-project-to-core (project-def)
  (forgerie-core:make-project
-  :name (getf project-def :name)))
+  :name (project-name project-def)))
 
 (defun convert-email-to-core (email-def)
  (forgerie-core:make-email
-  :address (sanitize-address (getf email-def :address))
-  :is-primary (eql (getf email-def :isprimary) 1)))
+  :address (sanitize-address (email-address email-def))
+  :is-primary (eql (email-isprimary email-def) 1)))
 
 (defun convert-user-to-core (user-def)
  (forgerie-core:make-user
-  :username (getf user-def :username)
-  :name (getf user-def :realname)
-  :emails (mapcar #'convert-email-to-core (get-emails (getf user-def :phid)))))
+  :username (user-username user-def)
+  :name (user-realname user-def)
+  :emails (mapcar #'convert-email-to-core (get-emails (user-phid user-def)))))
 
 (defun convert-task-to-core (task-def)
  (forgerie-core:make-ticket
-  :id (getf task-def :id)
-  :title (getf task-def :title)
-  :projects (mapcar #'convert-project-to-core (getf task-def :projects))))
+  :id (task-id task-def)
+  :title (task-title task-def)
+  :projects (mapcar #'convert-project-to-core (task-projects task-def))))
 
 (defun convert-file-to-core (file-def)
  (forgerie-core:make-file
-  :name (getf file-def :name)
-  :data (getf file-def :data)))
+  :name (file-name file-def)
+  :data (file-data file-def)))
 
 (defun convert-paste-to-core (paste-def)
  (forgerie-core:make-snippet
-  :id (getf paste-def :id)
-  :title (getf paste-def :title)
-  :files (list (convert-file-to-core (getf paste-def :file)))))
+  :id (paste-id paste-def)
+  :title (paste-title paste-def)
+  :files (list (convert-file-to-core (paste-file paste-def)))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (initialize)
@@ -440,5 +477,7 @@
   (mapcar #'convert-repository-to-core (get-repositories))
   :snippets
   (mapcar #'convert-paste-to-core (get-pastes))
+  :merge-requests
+  (mapcar #'convert-revision-to-core (get-revisions))
   :tickets
   (mapcar #'convert-task-to-core (get-tasks))))

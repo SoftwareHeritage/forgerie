@@ -1,2 +1,2 @@
-(defpackage #:forgerie-gitlab (:use :cl :forgerie-core)
- (:export #:*private-token* #:*server-address*))
+(defpackage #:forgerie-gitlab (:use :cl)
+ (:export #:*private-token* #:*server-address* #:*root-password*))

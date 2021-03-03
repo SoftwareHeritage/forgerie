@@ -102,17 +102,32 @@
       (ticket))))
    tickets)))
 
-(defun project-for-ticket (ticket vc-repositories)
+(defun validate-merge-requests (merge-requests vc-repositories)
+ (remove
+  nil
+  (mapcar
+   (lambda (mr)
+    (if
+     (not (find (forgerie-core:merge-request-vc-repository mr) vc-repositories :test #'equalp))
+     (format *error-output* "Merge Request with title ~A is not assignable to a repository~%" (forgerie-core:merge-request-title mr))
+     mr))
+   merge-requests)))
+
+(defun find-project-by-name (name)
  (first
   (get-request
    "projects"
    ; This is a list of one item in order to get past validation
-   `(("search" . ,(forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories))))))))
+   `(("search" . ,name)))))
+
+(defun project-for-ticket (ticket vc-repositories)
+ (find-project-by-name (forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories)))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
- (let
+ (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
-   (tickets (validate-tickets (getf data :tickets) (getf data :vc-repositories))))
+   (tickets (validate-tickets (getf data :tickets) (getf data :vc-repositories)))
+   (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
   (mapcar #'create-user (getf data :users))
   (mapcar #'create-project vc-repositories)
   (mapcar (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
@@ -141,6 +156,28 @@
     ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
     ("reset_password" . "true")
     ("username" . ,(forgerie-core:user-username user)))))
+
+(defun create-merge-request (mr)
+ (let*
+  ((project-name
+    (forgerie-core:vc-repository-name
+     (forgerie-core:merge-request-vc-repository
+      mr)))
+   (project (find-project-by-name project-name))
+   (checkout-path (format nil "/tmp/forgerie/~A/" (getf project :path))))
+  (ensure-directories-exist checkout-path)
+  (sb-ext:run-program "/usr/bin/git"
+   (list
+    (format nil "--git-dir=~A" checkout-path)
+    "-c"
+    "user.name=root"
+    "-c"
+    (format nil "user.password=~A" *root-password*)
+    "clone"
+    (getf project :http_url_to_repo))
+   :output t
+   :wait t
+   )))
 
 (defun create-snippet (snippet)
  (when
