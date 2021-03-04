@@ -30,21 +30,8 @@
       :parameters parameters))))))
 
 (defun git-cmd (project cmd &rest args)
- (with-output-to-string (out)
-  (let
-   ((p
-     (sb-ext:run-program "/usr/bin/git"
-      (append
-       (list
-        "-C"
-        (format nil "~A~A" *checkout-path* (getf project :path))
-        cmd)
-       args)
-      :output out
-      :error out
-      :wait t)))
-   (when (not (zerop (sb-ext:process-exit-code p)))
-    (error "Failed to execute git command: ~A with args ~S in project ~A" cmd args (getf project :id))))))
+ (forgerie-core:git-cmd
+  (format nil "~A~A" *checkout-path* (getf project :path)) cmd args))
 
 (defun get-request (path &optional parameters)
  (make-request path :get parameters))
@@ -79,8 +66,7 @@
       ((not (forgerie-core:vc-repository-primary-projects vcr))
        (format *error-output* "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr))
        nil)
-      ((not
-        (remove-if-not
+      ((not (remove-if-not
          (lambda (proj) (find proj valid-projects :test #'equalp))
          (forgerie-core:vc-repository-primary-projects vcr)))
        nil)

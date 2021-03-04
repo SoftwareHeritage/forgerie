@@ -241,26 +241,20 @@
        ; Is this commit reachable?
        (not
         (zerop
-         (sb-ext:process-exit-code
-          (sb-ext:run-program "/usr/bin/git"
-           (list
-            (format nil "--git-dir=~A" (repository-localpath repository))
-            "cat-file"
-            "-t"
-            (repository-commit-commitidentifier commit))
-           :wait t))))
+         (forgerie-core:git-cmd
+          (repository-localpath repository)
+          "cat-file"
+          (list "-t" (repository-commit-commitidentifier commit)))))
        (string=
         (format nil "undefined~%")
-        (with-output-to-string (out)
-         (sb-ext:process-exit-code
-          (sb-ext:run-program "/usr/bin/git"
+        (second
+         (multiple-value-list
+          (forgerie-core:git-cmd
+           (repository-localpath repository)
+           "name-rev"
            (list
-            (format nil "--git-dir=~A" (repository-localpath repository))
-            "name-rev"
             "--name-only"
-            (repository-commit-commitidentifier commit))
-           :wait t
-           :output out))))
+            (repository-commit-commitidentifier commit))))))
        ; Remove merge commits
        (< 1 (length (repository-commit-parents commit)))))
      (mapcar #'get-commit
@@ -296,15 +290,14 @@
       (lambda (sha) (list sha (get-details repository sha)))
       (cl-ppcre:split
        "\\n"
-       (with-output-to-string (out)
-        (sb-ext:run-program "/usr/bin/git"
-         (list
-          (format nil "--git-dir=~A" (repository-localpath repository))
+       (second
+        (multiple-value-list
+         (forgerie-core:git-cmd
+          (repository-localpath repository)
           "log"
-          "--all"
-          "--pretty=%H")
-         :wait t
-         :output out)))))
+          (list
+           "--all"
+           "--pretty=%H")))))))
     *sha-detail-cache*)))
  (cdr (assoc (repository-phid repository) *sha-detail-cache* :test #'string=)))
 
@@ -331,17 +324,12 @@
        (cons
         (list
          :patch
-         (with-output-to-string (out)
-          (sb-ext:run-program "/usr/bin/git"
-           (list
-            (format nil "--git-dir=~A" (repository-localpath staging-repository))
+         (second
+          (multiple-value-list
+           (forgerie-core:git-cmd
+            (repository-localpath staging-repository)
             "format-patch"
-            "-k"
-            "-1"
-            "--stdout"
-            (format nil "phabricator/diff/~A~~~A" diff-id n))
-           :wait t
-           :output out)))
+            (list "-k" "-1" "--stdout" (format nil "phabricator/diff/~A~~~A" diff-id n))))))
        (build-commit-chain diff-id (1+ n)))))))
    (let
     ((commit-chain (reverse (build-commit-chain (differential-diff-id latest-diff)))))
@@ -355,41 +343,22 @@
  (let*
   ((repository (get-repository (differential-revision-repositoryphid revision)))
    (user (get-user (differential-revision-authorphid revision)))
+   (path (format nil "~A/~A/" *checkout-path* (repository-repositoryslug repository)))
    (raw-diff
     (drakma:http-request
      (format nil
       "~A/D~A?download=true"
       *phabricator-location*
       (differential-revision-id revision)))))
-   (ensure-directories-exist (format nil "~A/~A/" *checkout-path* (repository-repositoryslug repository)))
-   (sb-ext:run-program "/usr/bin/git"
-    (list
-     "-C"
-     (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
-     "clone"
-     (repository-localpath repository)
-     ".")
-    :wait t)
+   (ensure-directories-exist path)
+   (forgerie-core:git-cmd path "clone" (list (repository-localpath repository) "."))
    (labels
     ((sha-applicable (sha)
-      (sb-ext:run-program "/usr/bin/git"
-       (list
-        "-C"
-        (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
-        "checkout"
-        sha)
-       :wait t)
+      (forgerie-core:git-cmd path "checkout" (list sha))
       (zerop
        (sb-ext:process-exit-code
         (with-input-from-string (in raw-diff)
-         (sb-ext:run-program "/usr/bin/git"
-          (list
-           "-C"
-           (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
-           "apply"
-           "-")
-          :wait t
-          :input in)))))
+         (forgerie-core:git-cmd path "apply" (list "-") :input in)))))
      (find-parent-sha (&optional (shas (mapcar #'car (get-shas-and-details repository))))
       (with-output-to-string (out)
        (cond
@@ -398,38 +367,24 @@
         (t (find-parent-sha (cdr shas)))))))
     (let
      ((parent-commit-sha (find-parent-sha)))
-     (sb-ext:run-program "/usr/bin/git"
+     (forgerie-core:git-cmd path "add" (list "."))
+     (forgerie-core:git-cmd path "commit"
       (list
-       "-C"
-       (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
-       "add"
-       ".")
-      :wait t)
-     (sb-ext:run-program "/usr/bin/git"
-      (list
-       "-C"
-       (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
-       "commit"
        "--author"
        (format nil "~A <~A>" (user-realname user) (email-address (user-primary-email user)))
        "-m"
-       (format nil "Generated commit for differential D~A" (differential-revision-id revision)))
-      :wait t)
+       (format nil "Generated commit for differential D~A" (differential-revision-id revision))))
      (list
       (list
        :repositoryid (repository-id repository)
        :patch
-       (with-output-to-string (out)
-        (sb-ext:run-program "/usr/bin/git"
+       (second
+        (multiple-value-list
+        (forgerie-core:git-cmd path "format-patch"
          (list
-          "-C"
-          (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
-          "format-patch"
           "-k"
           "-1"
-          "--stdout")
-         :wait t
-         :output out))
+          "--stdout"))))
        :parents
        (list
         (list

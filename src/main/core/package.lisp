@@ -1,16 +1,15 @@
 (defpackage #:forgerie-core (:use :cl)
  (:export
-  ; base.lisp
-  #:import-forge #:export-forge
-
   ; run.lisp
   #:run
 
   ; base.lisp
+  #:import-forge #:export-forge
   #:make-file #:file-name #:file-data
   #:make-commit #:commit-sha #:commit
   #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit
+  #:make-note #:note-text #:note-author
 
   ; user.lisp
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
@@ -34,4 +33,4 @@
   #:merge-request-type
 
   ; utils.lisp
-  #:vc-repositories-with-primary-project))
+  #:vc-repositories-with-primary-project #:git-cmd))

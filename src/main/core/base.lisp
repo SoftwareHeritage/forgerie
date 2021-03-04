@@ -1,5 +1,8 @@
 (in-package #:forgerie-core)
 
+(defgeneric import-forge (forge))
+(defgeneric export-forge (forge data))
+
 (defstruct file name data)
 
 ; A branch in forgerie exists outside of git branches.  Because
@@ -13,3 +16,5 @@
 
 (defstruct commit sha)
 (defstruct patch diff)
+
+(defstruct note text author)
