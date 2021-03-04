@@ -8,8 +8,8 @@
 
   ; base.lisp
   #:make-file #:file-name #:file-data
-  #:make-commit #:commit-sha
-  #:make-patch #:patch-diff
+  #:make-commit #:commit-sha #:commit
+  #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit
 
   ; user.lisp
@@ -30,7 +30,8 @@
 
   ; merge-request.lisp
   #:make-merge-request #:merge-request-vc-repository #:merge-request-title #:merge-request-description
-  #:merge-request-source-branch #:merge-request-target-branch #:merge-request-commits #:merge-request-patch
+  #:merge-request-source-branch #:merge-request-target-branch #:merge-request-changes #:merge-request-patch
+  #:merge-request-type
 
   ; utils.lisp
   #:vc-repositories-with-primary-project))

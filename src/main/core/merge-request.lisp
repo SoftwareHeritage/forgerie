@@ -18,4 +18,6 @@
 
  ; Changes can be either a list of commits, or a list of patches (or both)
  ; which are applied after the branches are created
+ ;
+ ; These should be in the order they should be applied
  changes)

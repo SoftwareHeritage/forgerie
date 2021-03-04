@@ -222,41 +222,42 @@
 (defun get-commits-from-db (revision)
  (let
   ((repository (get-repository (differential-revision-repositoryphid revision))))
-  (order-related-commits
-   (remove-if
-    (lambda (commit)
-     (or
-      (not (eql (repository-commit-repositoryid commit) (repository-id repository)))
-      ; Is this commit reachable?
-      (not
-       (zerop
-        (sb-ext:process-exit-code
-         (sb-ext:run-program "/usr/bin/git"
-          (list
-           (format nil "--git-dir=~A" (repository-localpath repository))
-           "cat-file"
-           "-t"
-           (repository-commit-commitidentifier commit))
-          :wait t))))
-      (string=
-       (format nil "undefined~%")
-       (with-output-to-string (out)
-        (sb-ext:process-exit-code
-         (sb-ext:run-program "/usr/bin/git"
-          (list
-           (format nil "--git-dir=~A" (repository-localpath repository))
-           "name-rev"
-           "--name-only"
-           (repository-commit-commitidentifier commit))
-          :wait t
-          :output out))))
-      ; Remove merge commits
-      (< 1 (length (repository-commit-parents commit)))))
-    (mapcar #'get-commit
-     (mapcar #'edge-dst
-      ; type of 31 is the same as DifferentialRevisionHasCommitEdgeType
-      (query (format nil "select dst from phabricator_differential.edge where src = '~A' and type = 31"
-              (differential-revision-phid revision)))))))))
+  (reverse
+   (order-related-commits
+    (remove-if
+     (lambda (commit)
+      (or
+       (not (eql (repository-commit-repositoryid commit) (repository-id repository)))
+       ; Is this commit reachable?
+       (not
+        (zerop
+         (sb-ext:process-exit-code
+          (sb-ext:run-program "/usr/bin/git"
+           (list
+            (format nil "--git-dir=~A" (repository-localpath repository))
+            "cat-file"
+            "-t"
+            (repository-commit-commitidentifier commit))
+           :wait t))))
+       (string=
+        (format nil "undefined~%")
+        (with-output-to-string (out)
+         (sb-ext:process-exit-code
+          (sb-ext:run-program "/usr/bin/git"
+           (list
+            (format nil "--git-dir=~A" (repository-localpath repository))
+            "name-rev"
+            "--name-only"
+            (repository-commit-commitidentifier commit))
+           :wait t
+           :output out))))
+       ; Remove merge commits
+       (< 1 (length (repository-commit-parents commit)))))
+     (mapcar #'get-commit
+      (mapcar #'edge-dst
+       ; type of 31 is the same as DifferentialRevisionHasCommitEdgeType
+       (query (format nil "select dst from phabricator_differential.edge where src = '~A' and type = 31"
+               (differential-revision-phid revision))))))))))
 
 (defvar *sha-detail-cache*
  (when (probe-file "~/shadetailcache") (with-open-file (str "~/shadetailcache" :direction :input) (read str nil))))
@@ -332,7 +333,13 @@
            :wait t
            :output out)))
        (build-commit-chain diff-id (1+ n)))))))
-   (build-commit-chain (differential-diff-id latest-diff)))))
+   (let
+    ((commit-chain (reverse (build-commit-chain (differential-diff-id latest-diff)))))
+    (cons
+     (append
+      (second commit-chain)
+      (list :parents (list (first commit-chain))))
+     (cddr commit-chain))))))
 
 (defun build-raw-commit (revision)
  (let
@@ -416,11 +423,11 @@
     :name
     ; Defaults to master, but that may be wrong after more investigation
     (if (eql :open type) "master" (format nil "generated-differential-D~A-target" (differential-revision-id revision-def)))
-    :commit (convert-commit-to-core (car (repository-commit-parents (car (last (differential-revision-related-commits revision-def)))))))
+    :commit (convert-commit-to-core (car (repository-commit-parents (car (differential-revision-related-commits revision-def))))))
    :source-branch
    (forgerie-core:make-branch
     :name (format nil "generated-differential-D~A-source" (differential-revision-id revision-def))
-    :commit (convert-commit-to-core (car (repository-commit-parents (car (last (differential-revision-related-commits revision-def)))))))
+    :commit (convert-commit-to-core (car (repository-commit-parents (car (differential-revision-related-commits revision-def))))))
    :changes (mapcar #'convert-commit-to-core (differential-revision-related-commits revision-def)))))
 
 (defun convert-repository-to-core (repository-def)

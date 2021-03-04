@@ -36,10 +36,6 @@
     (list
      "-C"
      (format nil "~A~A" *checkout-path* (getf project :path))
-     "-c"
-     "user.name=root"
-     "-c"
-     (format nil "user.password=~A" *root-password*)
      cmd)
     args)
    :output out
@@ -176,8 +172,8 @@
 
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *checkout-path* (getf project :path))))
-  (ensure-directories-exist *checkout-path*)
-  (git-cmd project "clone" (getf project :http_url_to_repo))))
+  (ensure-directories-exist (format nil "~A~A/" *checkout-path* (getf project :path)))
+  (git-cmd project "clone" (getf project :http_url_to_repo) ".")))
 
 (defun create-merge-request (mr)
  (let*
@@ -197,7 +193,15 @@
    (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
   (mapcar
    (lambda (commit)
-    (git-cmd project "merge" (forgerie-core:commit-sha commit)))
+    (typecase commit
+     (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
+     (forgerie-core:patch
+      (let
+       ((patch-file (format nil "~A/working.patch" *checkout-path*)))
+       (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
+        (princ (forgerie-core:patch-diff commit) str))
+       (git-cmd project "am" patch-file)
+       (delete-file patch-file)))))
    (forgerie-core:merge-request-changes mr))
   (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
   (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
