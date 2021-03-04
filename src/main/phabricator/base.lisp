@@ -13,3 +13,5 @@
 
 ; This is the http location of the phabricator server
 (defvar *phabricator-location* nil)
+
+(defvar *checkout-path* "/tmp/forgerie/phabricator")

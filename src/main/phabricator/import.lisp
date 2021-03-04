@@ -11,7 +11,6 @@
    fields)))
 
 (getf-convenience differential-diff id)
-(getf-convenience differential-revision id title summary phid status repositoryphid datecreated)
 (getf-convenience edge dst)
 (getf-convenience email address isprimary)
 (getf-convenience file storageengine storageformat storagehandle name data)
@@ -20,10 +19,10 @@
 (getf-convenience project phid icon name)
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
-(getf-convenience repository-commit id phid repositoryid commitidentifier parents raw-diff patch)
+(getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
 (getf-convenience task id phid title projects)
-(getf-convenience user username realname phid)
-(getf-convenience differential-revision id title summary phid status repository repositoryphid datecreated related-commits)
+(getf-convenience user username realname phid emails)
+(getf-convenience differential-revision id title summary phid status repository repositoryphid datecreated related-commits authorphid)
 
 (defvar *query-cache* nil)
 
@@ -58,14 +57,25 @@
 (defun sanitize-address (address)
  (format nil "~A@opentechstrategies.com" (cl-ppcre:regex-replace-all "@" address "_")))
 
+(defun user-primary-email (user)
+ (find 1 (user-emails user) :key #'email-isprimary))
+
 (defun get-emails (user-phid)
  (query (format nil "select * from phabricator_user.user_email where userphid = '~A'" user-phid)))
 
+(defun attach-emails-to-user (user)
+ (append
+  user
+  (list :emails (get-emails (user-phid user)))))
+
 (defun get-user (phid)
- (query "select username, realName from phabricator_user.user where phid = '~A'" phid))
+ (attach-emails-to-user
+  (first
+   (query (format nil "select username, realName, phid from phabricator_user.user where phid = '~A'" phid)))))
 
 (defun get-users ()
- (query "select username, realName, phid from phabricator_user.user"))
+ (mapcar #'attach-emails-to-user
+  (query "select username, realName, phid from phabricator_user.user")))
 
 (defun fill-out-project (proj)
  (append
@@ -342,39 +352,89 @@
      (cddr commit-chain))))))
 
 (defun build-raw-commit (revision)
- (let
-  ((raw-diff
+ (let*
+  ((repository (get-repository (differential-revision-repositoryphid revision)))
+   (user (get-user (differential-revision-authorphid revision)))
+   (raw-diff
     (drakma:http-request
      (format nil
       "~A/D~A?download=true"
       *phabricator-location*
-      (differential-revision-id revision))))
-   (parent-commit-sha
-    (cl-ppcre:regex-replace-all
-     "\\s"
-     (with-output-to-string (out)
+      (differential-revision-id revision)))))
+   (ensure-directories-exist (format nil "~A/~A/" *checkout-path* (repository-repositoryslug repository)))
+   (sb-ext:run-program "/usr/bin/git"
+    (list
+     "-C"
+     (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
+     "clone"
+     (repository-localpath repository)
+     ".")
+    :wait t)
+   (labels
+    ((sha-applicable (sha)
       (sb-ext:run-program "/usr/bin/git"
        (list
-        (format nil "--git-dir=~A" (repository-localpath (differential-revision-repository revision)))
-        "rev-list"
-        "-1"
-        (multiple-value-bind
-         (s m h day mon year) (decode-universal-time (unix-to-universal-time (differential-revision-datecreated revision)))
-         (declare (ignore s m h))
-         (format nil "--before='~A/~A/~A'" mon day year))
-        ; Default to master branch, but may need to change later
-        "master")
-       :output out))
-     "")))
-  (list
-   (list
-    :repositoryid (repository-id (differential-revision-repository revision))
-    :raw-diff raw-diff
-    :parents
-    (list
+        "-C"
+        (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
+        "checkout"
+        sha)
+       :wait t)
+      (zerop
+       (sb-ext:process-exit-code
+        (with-input-from-string (in raw-diff)
+         (sb-ext:run-program "/usr/bin/git"
+          (list
+           "-C"
+           (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
+           "apply"
+           "-")
+          :wait t
+          :input in)))))
+     (find-parent-sha (&optional (shas (mapcar #'car (get-shas-and-details repository))))
+      (with-output-to-string (out)
+       (cond
+        ((not shas) (error "Couldn't find a sha for which this could be applied"))
+        ((sha-applicable (car shas)) (car shas))
+        (t (find-parent-sha (cdr shas)))))))
+    (let
+     ((parent-commit-sha (find-parent-sha)))
+     (sb-ext:run-program "/usr/bin/git"
+      (list
+       "-C"
+       (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
+       "add"
+       ".")
+      :wait t)
+     (sb-ext:run-program "/usr/bin/git"
+      (list
+       "-C"
+       (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
+       "commit"
+       "--author"
+       (format nil "~A <~A>" (user-realname user) (email-address (user-primary-email user)))
+       "-m"
+       (format nil "Generated commit for differential D~A" (differential-revision-id revision)))
+      :wait t)
      (list
-      :repositoryid (repository-id (differential-revision-repository revision))
-      :commitidentifier parent-commit-sha))))))
+      (list
+       :repositoryid (repository-id repository)
+       :patch
+       (with-output-to-string (out)
+        (sb-ext:run-program "/usr/bin/git"
+         (list
+          "-C"
+          (format nil "~A/~A" *checkout-path* (repository-repositoryslug repository))
+          "format-patch"
+          "-k"
+          "-1"
+          "--stdout")
+         :wait t
+         :output out))
+       :parents
+       (list
+        (list
+         :repositoryid (repository-id repository)
+         :commitidentifier parent-commit-sha))))))))
 
 (defun get-revisions ()
  (mapcar
@@ -392,14 +452,12 @@
   (remove-if
    (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
    ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
-   (query "select id, title, summary, phid, status, repositoryphid, datecreated from phabricator_differential.differential_revision where id > 4700"))))
+   (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision where id > 4700"))))
 
 (defun convert-commit-to-core (commit)
  (cond
   ((repository-commit-commitidentifier commit)
    (forgerie-core:make-commit :sha (repository-commit-commitidentifier commit)))
-  ((repository-commit-raw-diff commit)
-   (forgerie-core:make-patch :diff (repository-commit-raw-diff commit)))
   ((repository-commit-patch commit)
    (forgerie-core:make-patch :diff (repository-commit-patch commit)))))
 
@@ -454,7 +512,7 @@
  (forgerie-core:make-user
   :username (user-username user-def)
   :name (user-realname user-def)
-  :emails (mapcar #'convert-email-to-core (get-emails (user-phid user-def)))))
+  :emails (mapcar #'convert-email-to-core (user-emails user-def))))
 
 (defun convert-task-to-core (task-def)
  (forgerie-core:make-ticket

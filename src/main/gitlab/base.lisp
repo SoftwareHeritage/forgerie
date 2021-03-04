@@ -4,4 +4,4 @@
 (defvar *private-token* nil)
 (defvar *root-password* nil)
 
-(defvar *checkout-path* "/tmp/forgerie/")
+(defvar *checkout-path* "/tmp/forgerie/gitlab/")

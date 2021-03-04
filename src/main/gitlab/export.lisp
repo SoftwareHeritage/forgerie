@@ -31,16 +31,20 @@
 
 (defun git-cmd (project cmd &rest args)
  (with-output-to-string (out)
-  (sb-ext:run-program "/usr/bin/git"
-   (append
-    (list
-     "-C"
-     (format nil "~A~A" *checkout-path* (getf project :path))
-     cmd)
-    args)
-   :output out
-   :error out
-   :wait t)))
+  (let
+   ((p
+     (sb-ext:run-program "/usr/bin/git"
+      (append
+       (list
+        "-C"
+        (format nil "~A~A" *checkout-path* (getf project :path))
+        cmd)
+       args)
+      :output out
+      :error out
+      :wait t)))
+   (when (not (zerop (sb-ext:process-exit-code p)))
+    (error "Failed to execute git command: ~A with args ~S in project ~A" cmd args (getf project :id))))))
 
 (defun get-request (path &optional parameters)
  (make-request path :get parameters))
