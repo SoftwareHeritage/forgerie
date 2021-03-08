@@ -3,4 +3,5 @@
 (defstruct ticket
  id
  title
- projects)
+ projects
+ notes)

@@ -20,7 +20,8 @@
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
-(getf-convenience task id phid title projects)
+(getf-convenience task id phid title projects comments)
+(getf-convenience task-comment author authorphid content datecreated)
 (getf-convenience user username realname phid emails)
 (getf-convenience differential-revision id title summary phid status repository repositoryphid datecreated related-commits authorphid)
 
@@ -94,19 +95,42 @@
 (defun get-projects ()
  (mapcar #'fill-out-project (query "select id, phid, color, name, icon from phabricator_project.project")))
 
-(defun get-tasks ()
+(defun add-author-to-task-comment (comment)
+ (append
+  comment
+  (list :author (get-user (task-comment-authorphid comment)))))
+
+(defun get-task-comments (task)
  (mapcar
-  (lambda (task)
-   (append
-    task
-    (list
-     :projects
-     (mapcar #'get-project
-      (mapcar #'edge-dst
-       (query
-        (format nil
-         "select dst from phabricator_maniphest.edge where src = '~A' and dst like 'PHID-PROJ%'"
-         (task-phid task))))))))
+  #'add-author-to-task-comment
+  (query
+   (format nil
+    "select
+        mtc.authorphid, mt.datecreated, mtc.content
+        from phabricator_maniphest.maniphest_transaction mt
+        left join phabricator_maniphest.maniphest_transaction_comment mtc on mtc.phid = mt.commentphid
+        where commentphid is not null and
+            objectphid = '~A' and
+            transactiontype = 'core:comment' order by mt.datecreated"
+    (task-phid task)))))
+
+(defun annotate-task (task)
+ (append
+  task
+  (list
+   :comments
+   (get-task-comments task))
+  (list
+   :projects
+   (mapcar #'get-project
+    (mapcar #'edge-dst
+     (query
+      (format nil
+       "select dst from phabricator_maniphest.edge where src = '~A' and dst like 'PHID-PROJ%'"
+       (task-phid task))))))))
+
+(defun get-tasks ()
+ (mapcar #'annotate-task
   (query "select * from phabricator_maniphest.maniphest_task")))
 
 (defun attach-projects-to-repository (repo)
@@ -350,46 +374,50 @@
       "~A/D~A?download=true"
       *phabricator-location*
       (differential-revision-id revision)))))
+  (when (not (probe-file path))
    (ensure-directories-exist path)
-   (forgerie-core:git-cmd path "clone" (list (repository-localpath repository) "."))
-   (labels
-    ((sha-applicable (sha)
-      (forgerie-core:git-cmd path "checkout" (list sha))
-      (zerop
-       (sb-ext:process-exit-code
-        (with-input-from-string (in raw-diff)
-         (forgerie-core:git-cmd path "apply" (list "-") :input in)))))
-     (find-parent-sha (&optional (shas (mapcar #'car (get-shas-and-details repository))))
-      (with-output-to-string (out)
-       (cond
-        ((not shas) (error "Couldn't find a sha for which this could be applied"))
-        ((sha-applicable (car shas)) (car shas))
-        (t (find-parent-sha (cdr shas)))))))
-    (let
-     ((parent-commit-sha (find-parent-sha)))
-     (forgerie-core:git-cmd path "add" (list "."))
-     (forgerie-core:git-cmd path "commit"
-      (list
-       "--author"
-       (format nil "~A <~A>" (user-realname user) (email-address (user-primary-email user)))
-       "-m"
-       (format nil "Generated commit for differential D~A" (differential-revision-id revision))))
+   (forgerie-core:git-cmd path "clone" (list (repository-localpath repository) ".")))
+  (labels
+   ((sha-applicable (sha)
+     (forgerie-core:git-cmd path "checkout" (list sha))
+     (zerop
+      (with-input-from-string (in raw-diff)
+       (forgerie-core:git-cmd path "apply" (list "-") :input in :error nil))))
+    (find-parent-sha (&optional (shas (mapcar #'car (get-shas-and-details repository))))
+     (with-output-to-string (out)
+      (cond
+       ((not shas)
+        (with-open-file (debug-file "~/diff.patch" :direction :output :if-exists :supersede)
+         (princ raw-diff debug-file))
+        (format t "Path: ~A~%" path)
+        (error "Couldn't find a sha for which this could be applied"))
+       ((sha-applicable (car shas)) (car shas))
+       (t (find-parent-sha (cdr shas)))))))
+   (let
+    ((parent-commit-sha (find-parent-sha)))
+    (forgerie-core:git-cmd path "add" (list "."))
+    (forgerie-core:git-cmd path "commit"
      (list
-      (list
-       :repositoryid (repository-id repository)
-       :patch
-       (second
-        (multiple-value-list
-        (forgerie-core:git-cmd path "format-patch"
-         (list
-          "-k"
-          "-1"
-          "--stdout"))))
-       :parents
-       (list
+      "--author"
+      (format nil "~A <~A>" (user-realname user) (email-address (user-primary-email user)))
+      "-m"
+      (format nil "Generated commit for differential D~A" (differential-revision-id revision))))
+    (list
+     (list
+      :repositoryid (repository-id repository)
+      :patch
+      (second
+       (multiple-value-list
+       (forgerie-core:git-cmd path "format-patch"
         (list
-         :repositoryid (repository-id repository)
-         :commitidentifier parent-commit-sha))))))))
+         "-k"
+         "-1"
+         "--stdout"))))
+      :parents
+      (list
+       (list
+        :repositoryid (repository-id repository)
+        :commitidentifier parent-commit-sha))))))))
 
 (defun get-revisions ()
  (mapcar
@@ -469,11 +497,18 @@
   :name (user-realname user-def)
   :emails (mapcar #'convert-email-to-core (user-emails user-def))))
 
+(defun convert-task-comment-to-core (comment)
+ (forgerie-core:make-note
+  :text (map 'string #'code-char (task-comment-content comment))
+  :author (convert-user-to-core (task-comment-author comment))
+  :date (unix-to-universal-time (task-comment-datecreated comment))))
+
 (defun convert-task-to-core (task-def)
  (forgerie-core:make-ticket
   :id (task-id task-def)
   :title (task-title task-def)
-  :projects (mapcar #'convert-project-to-core (task-projects task-def))))
+  :projects (mapcar #'convert-project-to-core (task-projects task-def))
+  :notes (mapcar #'convert-task-comment-to-core (task-comments task-def))))
 
 (defun convert-file-to-core (file-def)
  (forgerie-core:make-file

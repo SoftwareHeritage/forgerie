@@ -1,12 +1,14 @@
 (in-package #:forgerie-core)
 
+(defvar *debug* nil)
+
 (defun vc-repositories-with-primary-project (project vc-repositories)
  (remove-if-not
   (lambda (repo)
    (find project (vc-repository-primary-projects repo) :test #'equalp))
   vc-repositories))
 
-(defun git-cmd (git-dir cmd args &key (error t) (debug nil) (input nil))
+(defun git-cmd (git-dir cmd args &key (error t) (debug *debug*) (input nil))
  (let*
   ((err nil)
    (out nil)

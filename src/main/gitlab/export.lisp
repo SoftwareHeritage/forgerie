@@ -1,47 +1,5 @@
 (in-package #:forgerie-gitlab)
 
-(defun convert-js-to-plist (jsown)
- (cond
-  ((not (listp jsown)) jsown)
-  ((eql :obj (car jsown))
-   (apply #'append
-    (mapcar
-     (lambda (keyword)
-      (list
-       (intern (string-upcase keyword) :keyword)
-       (convert-js-to-plist (jsown:val jsown keyword))))
-     (jsown:keywords jsown))))
-  ((listp jsown)
-   (mapcar #'convert-js-to-plist jsown))
-  (t (error "Don't know how to handle ~S" jsown))))
-
-(defun make-request (path method parameters)
- (let
-  ((parameters
-    (cons
-     (cons "private_token" *private-token*)
-     parameters)))
-  (convert-js-to-plist
-   (jsown:parse
-    (map 'string #'code-char
-     (drakma:http-request
-      (format nil "~A/api/v4/~A" *server-address* path)
-      :method method
-      :parameters parameters))))))
-
-(defun git-cmd (project cmd &rest args)
- (forgerie-core:git-cmd
-  (format nil "~A~A" *checkout-path* (getf project :path)) cmd args))
-
-(defun get-request (path &optional parameters)
- (make-request path :get parameters))
-
-(defun post-request (path parameters)
- (make-request path :post parameters))
-
-(defun put-request (path parameters)
- (make-request path :put parameters))
-
 (defun validate-vc-repositories (vc-repositories projects)
  (let
   ((valid-projects
@@ -121,7 +79,7 @@
   (get-request
    "projects"
    ; This is a list of one item in order to get past validation
-   `(("search" . ,name)))))
+   :parameters `(("search" . ,name)))))
 
 (defun project-for-ticket (ticket vc-repositories)
  (find-project-by-name (forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories)))))
@@ -144,19 +102,39 @@
   "projects"
   `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
     ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+    ("issues_access_level" . "enabled")
     ("import_url" . ,(forgerie-core:vc-repository-git-location vc-repository)))))
+
+(defgeneric create-note (scope owner note))
+
+; Ticket here is a plist from gitlab, NOT a forgerie-core ticket
+(defmethod create-note ((scope (eql :ticket)) ticket note)
+ (let
+  ((gl-note
+    (post-request
+     (format nil "/projects/~A/issues/~A/notes" (getf ticket :project_id) (getf ticket :iid))
+    `(("body" . ,(forgerie-core:note-text note))
+      ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
+     :sudo (forgerie-core:user-username (forgerie-core:note-author note)))))))
 
 (defun create-ticket (ticket vc-repositories)
  (post-request
   (format nil "projects/~A/issues" (getf (project-for-ticket ticket vc-repositories) :id))
   `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
-    ("title" . ,(forgerie-core:ticket-title ticket)))))
+    ("title" . ,(forgerie-core:ticket-title ticket))))
+ (get-request
+  (format nil "projects/~A/issues/~A"
+   (getf (project-for-ticket ticket vc-repositories) :id)
+   (prin1-to-string (forgerie-core:ticket-id ticket)))))
 
 (defun create-user (user)
  (post-request
   "users"
   `(("name" . ,(forgerie-core:user-name user))
     ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
+    ; Everyone must be an admin to make some of the other import things work correctly
+    ; and then admin must be removed after
+    ("admin" . "true")
     ("reset_password" . "true")
     ("username" . ,(forgerie-core:user-username user)))))
 

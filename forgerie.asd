@@ -28,6 +28,7 @@
     (:module "gitlab"
      :components
      ((:file "package")
+      (:file "utils")
       (:file "base")
       (:file "export")))))
   (:module "config"

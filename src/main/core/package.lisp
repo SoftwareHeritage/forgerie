@@ -9,7 +9,7 @@
   #:make-commit #:commit-sha #:commit
   #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit
-  #:make-note #:note-text #:note-author
+  #:make-note #:note-text #:note-author #:note-date
 
   ; user.lisp
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
@@ -18,7 +18,7 @@
   #:make-project #:project-name
 
   ; ticket.lisp
-  #:make-ticket #:ticket-id #:ticket-projects #:ticket-title
+  #:make-ticket #:ticket-id #:ticket-projects #:ticket-title #:ticket-notes
 
   ; vc-repository.lisp
   #:make-vc-repository #:vc-repository-name #:vc-repository-slug #:vc-repository-primary-projects #:vc-repository-projects
@@ -33,4 +33,4 @@
   #:merge-request-type
 
   ; utils.lisp
-  #:vc-repositories-with-primary-project #:git-cmd))
+  #:vc-repositories-with-primary-project #:git-cmd #:*debug*))
