@@ -30,7 +30,7 @@
   ; merge-request.lisp
   #:make-merge-request #:merge-request-vc-repository #:merge-request-title #:merge-request-description
   #:merge-request-source-branch #:merge-request-target-branch #:merge-request-changes #:merge-request-patch
-  #:merge-request-type
+  #:merge-request-type #:merge-request-notes
 
   ; utils.lisp
   #:vc-repositories-with-primary-project #:git-cmd #:*debug*))

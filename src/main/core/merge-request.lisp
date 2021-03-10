@@ -20,4 +20,7 @@
  ; which are applied after the branches are created
  ;
  ; These should be in the order they should be applied
- changes)
+ changes
+
+ ; All the comments
+ notes)

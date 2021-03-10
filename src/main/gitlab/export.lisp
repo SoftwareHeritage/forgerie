@@ -115,6 +115,7 @@
   `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
     ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
     ("issues_access_level" . "enabled")
+    ("merge_requests_access_level" . "enabled")
     ("import_url" . ,(forgerie-core:vc-repository-git-location vc-repository)))))
 
 (defun create-note (project-id item-type item-id note)
@@ -137,8 +138,7 @@
    (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
   (forgerie-core:ticket-notes ticket))))
 
-(defun create-user (user)
- (post-request
+(defun create-user (user) (post-request
   "users"
   `(("name" . ,(forgerie-core:user-name user))
     ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
@@ -183,11 +183,16 @@
    (forgerie-core:merge-request-changes mr))
   (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
   (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-  (post-request
-   (format nil "projects/~A/merge_requests" (getf project :id))
-   `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-     ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-     ("title" . ,(forgerie-core:merge-request-title mr))))))
+  (let
+   ((gl-mr
+     (post-request
+      (format nil "projects/~A/merge_requests" (getf project :id))
+      `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+        ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+        ("title" . ,(forgerie-core:merge-request-title mr))))))
+   (mapcar
+    (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :id) note))
+    (forgerie-core:merge-request-notes mr)))))
 
 (defun create-snippet (snippet)
  (when
@@ -212,5 +217,4 @@
    gl-snippet
    (mapcar
     (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
-    (forgerie-core:snippet-notes snippet))
-  )))
+    (forgerie-core:snippet-notes snippet)))))

@@ -24,7 +24,9 @@
 (getf-convenience task id phid title projects comments)
 (getf-convenience task-comment author authorphid content datecreated)
 (getf-convenience user username realname phid emails)
-(getf-convenience differential-revision id title summary phid status repository repositoryphid datecreated related-commits authorphid)
+(getf-convenience differential-revision
+ id title summary phid status repository repositoryphid datecreated related-commits authorphid comments)
+(getf-convenience differential-comment author authorphid content datecreated)
 
 (defvar *query-cache* nil)
 
@@ -440,6 +442,25 @@
         :repositoryid (repository-id repository)
         :commitidentifier parent-commit-sha))))))))
 
+(defun add-author-to-differential-comment (comment)
+ (append
+  comment
+  (list :author (get-user (differential-comment-authorphid comment)))))
+
+(defun get-revision-comments (rev)
+ (mapcar
+  #'add-author-to-differential-comment
+  (query
+   (format nil
+    "select
+        rtc.authorphid, rt.datecreated, rtc.content
+        from phabricator_differential.differential_transaction rt
+        left join phabricator_differential.differential_transaction_comment rtc on rtc.phid = rt.commentphid
+        where commentphid is not null and
+            objectphid = '~A' and
+            transactiontype = 'core:comment' order by rt.datecreated"
+    (differential-revision-phid rev)))))
+
 (defun get-revisions ()
  (mapcar
   (lambda (rev)
@@ -447,6 +468,7 @@
     ((repository (get-repository (differential-revision-repositoryphid rev))))
     (append
      rev
+     (list :comments (get-revision-comments rev))
      (list :related-commits
       (or
        (get-commits-from-db rev)
@@ -464,6 +486,12 @@
    (forgerie-core:make-commit :sha (repository-commit-commitidentifier commit)))
   ((repository-commit-patch commit)
    (forgerie-core:make-patch :diff (repository-commit-patch commit)))))
+
+(defun convert-differential-comment-to-core (comment)
+ (forgerie-core:make-note
+  :text (map 'string #'code-char (differential-comment-content comment))
+  :author (convert-user-to-core (differential-comment-author comment))
+  :date (unix-to-universal-time (differential-comment-datecreated comment))))
 
 (defun convert-revision-to-core (revision-def)
  (let
@@ -490,7 +518,8 @@
    (forgerie-core:make-branch
     :name (format nil "generated-differential-D~A-source" (differential-revision-id revision-def))
     :commit (convert-commit-to-core (car (repository-commit-parents (car (differential-revision-related-commits revision-def))))))
-   :changes (mapcar #'convert-commit-to-core (differential-revision-related-commits revision-def)))))
+   :changes (mapcar #'convert-commit-to-core (differential-revision-related-commits revision-def))
+   :notes (mapcar #'convert-differential-comment-to-core (differential-revision-comments revision-def)))))
 
 (defun convert-repository-to-core (repository-def)
  (forgerie-core:make-vc-repository
