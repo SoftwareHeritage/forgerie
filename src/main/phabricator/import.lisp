@@ -15,7 +15,8 @@
 (getf-convenience email address isprimary)
 (getf-convenience file storageengine storageformat storagehandle name data)
 (getf-convenience file-storageblob data)
-(getf-convenience paste id title filephid file)
+(getf-convenience paste id phid title filephid file comments)
+(getf-convenience paste-comment author authorphid content datecreated)
 (getf-convenience project phid icon name)
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
@@ -196,17 +197,38 @@
        (file-storageformat file)
        file-phid)))))))
 
+(defun add-author-to-paste-comment (comment)
+ (append
+  comment
+  (list :author (get-user (paste-comment-authorphid comment)))))
+
+(defun get-paste-comments (paste)
+ (mapcar
+  #'add-author-to-paste-comment
+  (query
+   (format nil
+    "select
+        ptc.authorphid, pt.datecreated, ptc.content
+        from phabricator_paste.paste_transaction pt
+        left join phabricator_paste.paste_transaction_comment ptc on ptc.phid = pt.commentphid
+        where commentphid is not null and
+            objectphid = '~A' and
+            transactiontype = 'core:comment' order by pt.datecreated"
+    (paste-phid paste)))))
+
 (defun get-pastes ()
- (remove
-  nil
-  (mapcar
-   (lambda (paste)
-    (let
-     ; ignore-errors here is due to the nature of the data we're working with,
-     ; and should probably get removed later on
-     ((file (ignore-errors (get-file (paste-filephid paste)))))
-     (when file (append (list :file file) paste))))
-   (query "select id, title, filePHID from phabricator_paste.paste"))))
+ (mapcar
+  (lambda (paste) (append paste (list :comments (get-paste-comments paste))))
+  (remove
+   nil
+   (mapcar
+    (lambda (paste)
+     (let
+      ; ignore-errors here is due to the nature of the data we're working with,
+      ; and should probably get removed later on
+      ((file (ignore-errors (get-file (paste-filephid paste)))))
+      (when file (append (list :file file) paste))))
+    (query "select id, title, phid, filePHID from phabricator_paste.paste")))))
 
 (defun get-commit (phid &optional (with-parents t))
  (let
@@ -293,7 +315,6 @@
 (defun save-details ()
  (with-open-file (str "~/shadetailcache" :direction :output :if-exists :supersede)
   (format str "~S" *sha-detail-cache*)))
-
 
 (defun get-details (repository sha)
  (with-output-to-string (out)
@@ -510,6 +531,12 @@
   :projects (mapcar #'convert-project-to-core (task-projects task-def))
   :notes (mapcar #'convert-task-comment-to-core (task-comments task-def))))
 
+(defun convert-paste-comment-to-core (comment)
+ (forgerie-core:make-note
+  :text (map 'string #'code-char (paste-comment-content comment))
+  :author (convert-user-to-core (paste-comment-author comment))
+  :date (unix-to-universal-time (paste-comment-datecreated comment))))
+
 (defun convert-file-to-core (file-def)
  (forgerie-core:make-file
   :name (file-name file-def)
@@ -519,7 +546,8 @@
  (forgerie-core:make-snippet
   :id (paste-id paste-def)
   :title (paste-title paste-def)
-  :files (list (convert-file-to-core (paste-file paste-def)))))
+  :files (list (convert-file-to-core (paste-file paste-def)))
+  :notes (mapcar #'convert-paste-comment-to-core (paste-comments paste-def))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (initialize)

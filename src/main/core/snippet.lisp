@@ -3,4 +3,5 @@
 (defstruct snippet
  id
  title
- files)
+ files
+ notes)

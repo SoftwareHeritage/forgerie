@@ -25,7 +25,7 @@
   #:vc-repository-git-location
 
   ; snippet.lisp
-  #:make-snippet #:snippet-id #:snippet-title #:snippet-files
+  #:make-snippet #:snippet-id #:snippet-title #:snippet-files #:snippet-notes
 
   ; merge-request.lisp
   #:make-merge-request #:merge-request-vc-repository #:merge-request-title #:merge-request-description
