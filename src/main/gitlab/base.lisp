@@ -9,3 +9,5 @@
 ; This is a plist of the form:
 ; '(:name <name> :slug <slug>)
 (defvar *default-project* nil)
+
+(defvar *ssh-public-key* nil)

@@ -97,11 +97,18 @@
     ("snippets_access_level" . "enabled")
     ("path" . ,(getf *default-project* :slug)))))
 
+(defun add-ssh-key ()
+ (post-request
+  "user/keys"
+  `(("title" . "Forgerie Export Key")
+    ("key" . ,*ssh-public-key*))))
+
 (defun project-for-ticket (ticket vc-repositories)
  (find-project-by-name (forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories)))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
  (create-default-project)
+ (add-ssh-key)
  (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
    (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) (getf data :vc-repositories))))
@@ -118,11 +125,18 @@
 (defun create-project (vc-repository)
  (post-request
   "projects"
-  `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
-    ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
-    ("issues_access_level" . "enabled")
-    ("merge_requests_access_level" . "enabled")
-    ("import_url" . ,(forgerie-core:vc-repository-git-location vc-repository)))))
+ `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
+   ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+   ("issues_access_level" . "enabled")
+   ("merge_requests_access_level" . "enabled")))
+ (let*
+  ((gl-project (find-project-by-name (forgerie-core:vc-repository-name vc-repository)))
+   (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
+  (ensure-directories-exist working-path)
+  (git-cmd gl-project "clone" "--mirror" (forgerie-core:vc-repository-git-location vc-repository) ".")
+  (git-cmd gl-project "remote" "add" "gitlab" (getf gl-project :ssh_url_to_repo))
+  (git-cmd gl-project "push" "gitlab" "--mirror")
+  (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)))
 
 (defun create-note (project-id item-type item-id note)
  (post-request
@@ -157,7 +171,7 @@
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
   (ensure-directories-exist (format nil "~A~A/" *working-directory* (getf project :path)))
-  (git-cmd project "clone" (getf project :http_url_to_repo) ".")))
+  (git-cmd project "clone" "-o" "gitlab" (getf gl-project :ssh_url_to_repo) ".")))
 
 (defun create-merge-request (mr)
  (let*
@@ -187,8 +201,8 @@
        (git-cmd project "am" patch-file)
        (delete-file patch-file)))))
    (forgerie-core:merge-request-changes mr))
-  (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-  (git-cmd project "push" "origin" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+  (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+  (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
   (let
    ((gl-mr
      (post-request
