@@ -49,3 +49,19 @@
 
 (defun unix-to-universal-time (d)
  (+ d (encode-universal-time 0 0 0 1 1 1970 0)))
+
+(defmacro cached (dir id item)
+ (let
+  ((revision-path (gensym))
+   (obj (gensym)))
+ `(let
+   ((,revision-path (format nil "~A/~A/~A" *working-directory* ,dir ,id)))
+   (ensure-directories-exist ,revision-path)
+   (if
+    (probe-file ,revision-path)
+    (with-open-file (str ,revision-path) (read str))
+    (let
+     ((,obj ,item))
+     (with-open-file (str ,revision-path :direction :output)
+      (format str "~S" ,obj))
+     ,obj)))))

@@ -390,7 +390,7 @@
  (let*
   ((repository (get-repository (differential-revision-repositoryphid revision)))
    (user (get-user (differential-revision-authorphid revision)))
-   (path (format nil "~A/~A/" *checkout-path* (repository-repositoryslug repository)))
+   (path (format nil "~A/~A/" *working-directory* (repository-repositoryslug repository)))
    (raw-diff
     (drakma:http-request
      (format nil
@@ -412,7 +412,6 @@
        ((not shas)
         (with-open-file (debug-file "~/diff.patch" :direction :output :if-exists :supersede)
          (princ raw-diff debug-file))
-        (format t "Path: ~A~%" path)
         (error "Couldn't find a sha for which this could be applied"))
        ((sha-applicable (car shas)) (car shas))
        (t (find-parent-sha (cdr shas)))))))
@@ -462,23 +461,32 @@
     (differential-revision-phid rev)))))
 
 (defun get-revisions ()
- (mapcar
-  (lambda (rev)
-   (let
-    ((repository (get-repository (differential-revision-repositoryphid rev))))
-    (append
-     rev
-     (list :comments (get-revision-comments rev))
-     (list :related-commits
-      (or
-       (get-commits-from-db rev)
-       (ignore-errors (get-commits-from-staging rev))
-       (build-raw-commit rev)))
-     (list :repository repository))))
-  (remove-if
-   (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
-   ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
-   (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision where id > 4700"))))
+ (remove
+  nil
+  (mapcar
+   (lambda (rev)
+    (when forgerie-core:*debug*
+     (format t "---------------~%Loading revision ~A~%~%~%" (differential-revision-id rev)))
+    (let
+     ((repository (get-repository (differential-revision-repositoryphid rev))))
+     (handler-case
+      (append
+       rev
+       (list :comments (get-revision-comments rev))
+       (list :related-commits
+        (cached
+         "revision_commits"
+         (differential-revision-id rev)
+         (or
+          (get-commits-from-db rev)
+          (ignore-errors (get-commits-from-staging rev))
+          (build-raw-commit rev))))
+       (list :repository repository))
+      (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
+   (remove-if
+    (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
+    ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
+    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision order by id desc")))))
 
 (defun convert-commit-to-core (commit)
  (cond

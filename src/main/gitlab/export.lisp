@@ -104,7 +104,8 @@
   (mapcar #'create-user (getf data :users))
   (mapcar #'create-project vc-repositories)
   (mapcar (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
-  (mapcar #'create-snippet (getf data :snippets))))
+  (mapcar #'create-snippet (getf data :snippets))
+  (mapcar #'create-merge-request merge-requests)))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
@@ -149,8 +150,8 @@
     ("username" . ,(forgerie-core:user-username user)))))
 
 (defun create-local-checkout (project)
- (when (not (probe-file (format nil "~A~A" *checkout-path* (getf project :path))))
-  (ensure-directories-exist (format nil "~A~A/" *checkout-path* (getf project :path)))
+ (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
+  (ensure-directories-exist (format nil "~A~A/" *working-directory* (getf project :path)))
   (git-cmd project "clone" (getf project :http_url_to_repo) ".")))
 
 (defun create-merge-request (mr)
@@ -175,7 +176,7 @@
      (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
      (forgerie-core:patch
       (let
-       ((patch-file (format nil "~A/working.patch" *checkout-path*)))
+       ((patch-file (format nil "~A/working.patch" *working-directory*)))
        (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
         (princ (forgerie-core:patch-diff commit) str))
        (git-cmd project "am" patch-file)

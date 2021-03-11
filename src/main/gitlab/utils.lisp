@@ -33,7 +33,7 @@
 
 (defun git-cmd (project cmd &rest args)
  (forgerie-core:git-cmd
-  (format nil "~A~A" *checkout-path* (getf project :path)) cmd args))
+  (format nil "~A~A" *working-directory* (getf project :path)) cmd args))
 
 (defun get-request (path &key parameters sudo)
  (make-request path :get parameters :sudo sudo))
