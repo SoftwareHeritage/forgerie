@@ -17,7 +17,7 @@
 (getf-convenience file-storageblob data)
 (getf-convenience paste id phid title filephid file comments)
 (getf-convenience paste-comment author authorphid content datecreated)
-(getf-convenience project phid icon name)
+(getf-convenience project id phid icon name)
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
@@ -89,11 +89,11 @@
     (query (format nil "select slug from phabricator_project.project_slug where projectphid = '~A'" (project-phid proj)))))
   proj))
 
-(defun get-project (phid)
+(defun get-project (id &optional (key "phid"))
  (fill-out-project
   (first
    (query
-    (format nil "select id, phid, color, name, icon from phabricator_project.project where phid = '~A'" phid)))))
+    (format nil "select id, phid, color, name, icon from phabricator_project.project where ~A = '~A'" key id)))))
 
 (defun get-projects ()
  (mapcar #'fill-out-project (query "select id, phid, color, name, icon from phabricator_project.project")))
@@ -147,7 +147,27 @@
         (repository-phid repo)))))))
   (append
    repo
-   (list :primary-projects (remove-if-not (lambda (project) (string= "folder" (project-icon project))) associated-projects))
+   (list :primary-projects
+    (append
+     (mapcar
+      (lambda (override) (get-project (getf override :key) "id"))
+      (remove-if-not
+       (lambda (override)
+        (and
+         (repository-repositoryslug repo)
+         (string= (repository-repositoryslug repo) (getf override :repository))))
+       *project-assignment-overrides*))
+     (remove
+      nil
+      (mapcar
+       (lambda (project)
+        (when
+         (and
+          (string= "folder" (project-icon project))
+          ; We remove projects that have override defs, because we add them back in later
+          (not (find (project-id project) *project-assignment-overrides* :key (lambda (override) (getf override :key)))))
+         project))
+       associated-projects))))
    (list :projects associated-projects))))
 
 (defun get-repository (phid)

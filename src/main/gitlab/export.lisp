@@ -10,7 +10,7 @@
        (cond
         ((< 1 (length repos-for-proj))
          (format *standard-output*
-          "Project ~A is the primary project in multiple repositories:~%~{ * ~A~%~}"
+          "Project ~A is the primary project in multiple repositories, and those repositories won't be included:~%~{ * ~A~%~}"
           (forgerie-core:project-name proj)
           (mapcar #'forgerie-core:vc-repository-name repos-for-proj))
          nil)
@@ -22,9 +22,12 @@
     (lambda (vcr)
      (cond
       ((not (forgerie-core:vc-repository-primary-projects vcr))
+       ; Note that this output is just for debugging purposes, it doesn't actually stop anything
+       ; from hapening
        (format *error-output* "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr))
-       nil)
-      ((not (remove-if-not
+       vcr)
+      ((not
+        (remove-if-not
          (lambda (proj) (find proj valid-projects :test #'equalp))
          (forgerie-core:vc-repository-primary-projects vcr)))
        nil)
@@ -54,12 +57,14 @@
      ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
      (cond
       ((not vc-repos)
-       (format *error-output* "Ticket with id ~A is not assignable to a repository~%" (forgerie-core:ticket-id ticket)))
+       (format *error-output* "Ticket with id ~A is not assignable to a repository~%" (forgerie-core:ticket-id ticket))
+       :not-assignable)
       ((< 1 (length vc-repos))
        (format *error-output*
         "Ticket with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
         (forgerie-core:ticket-id ticket)
-        (mapcar #'forgerie-core:vc-repository-name vc-repos)))
+        (mapcar #'forgerie-core:vc-repository-name vc-repos))
+       :multiple-assignable)
       (ticket))))
    tickets)))
 
@@ -99,7 +104,7 @@
  (create-default-project)
  (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
-   (tickets (validate-tickets (getf data :tickets) (getf data :vc-repositories)))
+   (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) (getf data :vc-repositories))))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
   (mapcar #'create-user (getf data :users))
   (mapcar #'create-project vc-repositories)
