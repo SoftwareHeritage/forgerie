@@ -11,3 +11,7 @@
 (defvar *default-project* nil)
 
 (defvar *ssh-public-key* nil)
+
+; This is of the form
+; '(:name <name> :path <slug>)
+(defvar *default-group* nil)

@@ -95,7 +95,20 @@
   `(("name" . ,(getf *default-project* :name))
     ("issues_access_level" . "enabled")
     ("snippets_access_level" . "enabled")
-    ("path" . ,(getf *default-project* :slug)))))
+    ("path" . ,(getf *default-project* :path)))))
+
+(defun default-group ()
+ (when *default-group*
+  (get-request
+   "groups"
+   :parameters `(("search" . ,(getf *default-group* :name))))))
+
+(defun create-default-group ()
+ (when *default-group*
+  (post-request
+   "groups"
+   `(("name" . ,(getf *default-group* :name))
+     ("path" . ,(getf *default-group* :slug))))))
 
 (defun add-ssh-key ()
  (post-request
@@ -108,6 +121,7 @@
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
  (create-default-project)
+ (create-default-group)
  (add-ssh-key)
  (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
@@ -125,10 +139,16 @@
 (defun create-project (vc-repository)
  (post-request
   "projects"
- `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
-   ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
-   ("issues_access_level" . "enabled")
-   ("merge_requests_access_level" . "enabled")))
+  (append
+   (when *default-group*
+    (list
+     (cons
+      "namespace_id"
+      (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
+  `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
+    ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+    ("issues_access_level" . "enabled")
+    ("merge_requests_access_level" . "enabled"))))
  (let*
   ((gl-project (find-project-by-name (forgerie-core:vc-repository-name vc-repository)))
    (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
