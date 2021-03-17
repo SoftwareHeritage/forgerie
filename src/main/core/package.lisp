@@ -28,7 +28,7 @@
   #:make-snippet #:snippet-id #:snippet-title #:snippet-files #:snippet-notes
 
   ; merge-request.lisp
-  #:make-merge-request #:merge-request-vc-repository #:merge-request-title #:merge-request-description
+  #:make-merge-request #:merge-request-id #:merge-request-vc-repository #:merge-request-title #:merge-request-description
   #:merge-request-source-branch #:merge-request-target-branch #:merge-request-changes #:merge-request-patch
   #:merge-request-type #:merge-request-notes
 

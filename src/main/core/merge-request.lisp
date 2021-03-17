@@ -1,6 +1,7 @@
 (in-package #:forgerie-core)
 
 (defstruct merge-request
+ id
  vc-repository
  title
  description
