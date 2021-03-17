@@ -21,6 +21,10 @@
    (mapcar
     (lambda (vcr)
      (cond
+      ((cl-ppcre:scan "[,()/+]" (forgerie-core:vc-repository-name vcr))
+       (format *error-output* "VC Repository '~A' has an illegal name due to an illegal character, one of: ',()/+'.~%" (forgerie-core:vc-repository-name vcr)))
+      ((cl-ppcre:scan "^ " (forgerie-core:vc-repository-name vcr))
+       (format *error-output* "VC Repository '~A' has an illegal name due to starting with a space.~%" (forgerie-core:vc-repository-name vcr)))
       ((not (forgerie-core:vc-repository-primary-projects vcr))
        ; Note that this output is just for debugging purposes, it doesn't actually stop anything
        ; from hapening
@@ -33,6 +37,18 @@
        nil)
       (vcr)))
     vc-repositories))))
+
+(defun validate-users (users)
+ (remove nil
+  (mapcar
+   (lambda (user)
+    (cond
+     ((< (length (forgerie-core:user-username user)) 2)
+      (format *error-output* "User '~A' (~{~A~^,~}) has too short of a username.  Skipping."
+       (forgerie-core:user-username user)
+       (mapcar #'forgerie-core:email-address (forgerie-core:user-emails user))))
+     (user)))
+   users)))
 
 (defun ticket-assignable-vc-repositories (ticket vc-repositories)
  (when (forgerie-core:ticket-projects ticket)
@@ -90,12 +106,13 @@
  (find-project-by-name (getf *default-project* :name)))
 
 (defun create-default-project ()
- (post-request
-  "projects"
-  `(("name" . ,(getf *default-project* :name))
-    ("issues_access_level" . "enabled")
-    ("snippets_access_level" . "enabled")
-    ("path" . ,(getf *default-project* :path)))))
+ (when-unmapped-with-update (:project :default-project)
+  (post-request
+   "projects"
+   `(("name" . ,(getf *default-project* :name))
+     ("issues_access_level" . "enabled")
+     ("snippets_access_level" . "enabled")
+     ("path" . ,(getf *default-project* :path))))))
 
 (defun default-group ()
  (when *default-group*
@@ -105,16 +122,20 @@
 
 (defun create-default-group ()
  (when *default-group*
-  (post-request
-   "groups"
-   `(("name" . ,(getf *default-group* :name))
-     ("path" . ,(getf *default-group* :slug))))))
+  (when-unmapped-with-update (:group :default-group)
+   (post-request
+    "groups"
+    `(("name" . ,(getf *default-group* :name))
+      ("path" . ,(getf *default-group* :path)))))))
 
 (defun add-ssh-key ()
- (post-request
-  "user/keys"
-  `(("title" . "Forgerie Export Key")
-    ("key" . ,*ssh-public-key*))))
+ (let
+  ((key-name "Forgerie Export Key"))
+  (when-unmapped-with-update (:forgerie-key :main-key)
+   (post-request
+    "user/keys"
+    `(("title" . ,key-name)
+      ("key" . ,*ssh-public-key*))))))
 
 (defun project-for-ticket (ticket vc-repositories)
  (find-project-by-name (forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories)))))
@@ -125,9 +146,9 @@
  (add-ssh-key)
  (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
-   (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) (getf data :vc-repositories))))
+   (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) vc-repositories)))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
-  (mapcar #'create-user (getf data :users))
+  (mapcar #'create-user (validate-users (getf data :users)))
   (mapcar #'create-project vc-repositories)
   (mapcar (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
   (mapcar #'create-snippet (getf data :snippets))
@@ -137,124 +158,142 @@
 ; Some of the underlying information comes from core:projects that are
 ; the primary projects of the vc-repository
 (defun create-project (vc-repository)
- (post-request
-  "projects"
-  (append
-   (when *default-group*
-    (list
-     (cons
-      "namespace_id"
-      (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
-  `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
-    ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
-    ("issues_access_level" . "enabled")
-    ("merge_requests_access_level" . "enabled"))))
- (let*
-  ((gl-project (find-project-by-name (forgerie-core:vc-repository-name vc-repository)))
-   (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
-  (ensure-directories-exist working-path)
-  (git-cmd gl-project "clone" "--mirror" (forgerie-core:vc-repository-git-location vc-repository) ".")
-  (git-cmd gl-project "remote" "add" "gitlab" (getf gl-project :ssh_url_to_repo))
-  (git-cmd gl-project "push" "gitlab" "--mirror")
-  (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)))
+ (when-unmapped (:project (forgerie-core:vc-repository-slug vc-repository))
+  (let*
+   ((gl-project
+     (post-request
+      "projects"
+      (append
+       (when *default-group*
+        (list
+         (cons
+          "namespace_id"
+          (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
+      `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
+        ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+        ("issues_access_level" . "enabled")
+        ("merge_requests_access_level" . "enabled")))))
+    (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
+   (when
+    (getf gl-project :empty_repo)
+    (ensure-directories-exist working-path)
+    (git-cmd gl-project "clone" "--mirror" (forgerie-core:vc-repository-git-location vc-repository) ".")
+    (git-cmd gl-project "remote" "add" "gitlab" (getf gl-project :ssh_url_to_repo))
+    (git-cmd gl-project "push" "gitlab" "--mirror")
+    (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
+    (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project)))))
 
 (defun create-note (project-id item-type item-id note)
- (post-request
-  (format nil "/~A~A/~A/notes"
-   (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
- `(("body" . ,(forgerie-core:note-text note))
-   ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
-  :sudo (forgerie-core:user-username (forgerie-core:note-author note))))
+ (when
+  (not (zerop (length (forgerie-core:note-text note))))
+  (post-request
+   (format nil "/~A~A/~A/notes"
+    (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
+  `(("body" . ,(forgerie-core:note-text note))
+    ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
+   :sudo (forgerie-core:user-username (forgerie-core:note-author note)))))
 
 (defun create-ticket (ticket vc-repositories)
- (let
-  ((gl-ticket
-    (post-request
-     (format nil "projects/~A/issues" (getf (project-for-ticket ticket vc-repositories) :id))
-     `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
-       ("title" . ,(forgerie-core:ticket-title ticket))))))
- (mapcar
-  (lambda (note)
-   (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
-  (forgerie-core:ticket-notes ticket))))
+ (when-unmapped (:ticket (forgerie-core:ticket-id ticket))
+  (let*
+   ((project-id (getf (project-for-ticket ticket vc-repositories) :id))
+    (ticket-id (prin1-to-string (forgerie-core:ticket-id ticket)))
+    (gl-ticket
+     (update-mapping (:ticket (forgerie-core:ticket-id ticket))
+      (post-request
+       (format nil "projects/~A/issues" project-id)
+       `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
+         ("title" . ,(forgerie-core:ticket-title ticket)))))))
+   (mapcar
+    (lambda (note)
+     (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
+    (forgerie-core:ticket-notes ticket)))))
 
-(defun create-user (user) (post-request
-  "users"
-  `(("name" . ,(forgerie-core:user-name user))
-    ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
-    ; Everyone must be an admin to make some of the other import things work correctly
-    ; and then admin must be removed after
-    ("admin" . "true")
-    ("reset_password" . "true")
-    ("username" . ,(forgerie-core:user-username user)))))
+(defun create-user (user)
+ (when-unmapped-with-update (:user (forgerie-core:user-username user))
+  (post-request
+   "users"
+   `(("name" . ,(forgerie-core:user-name user))
+     ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
+     ; Everyone must be an admin to make some of the other import things work correctly
+     ; and then admin must be removed after
+     ("admin" . "true")
+     ("reset_password" . "true")
+     ("username" . ,(forgerie-core:user-username user))))))
 
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
   (ensure-directories-exist (format nil "~A~A/" *working-directory* (getf project :path)))
-  (git-cmd project "clone" "-o" "gitlab" (getf gl-project :ssh_url_to_repo) ".")))
+  (git-cmd project "clone" "-o" "gitlab" (getf project :ssh_url_to_repo) ".")))
 
 (defun create-merge-request (mr)
- (let*
-  ((project-name
-    (forgerie-core:vc-repository-name
-     (forgerie-core:merge-request-vc-repository
-      mr)))
-   (project (find-project-by-name project-name)))
-  (create-local-checkout project)
-  (git-cmd project "branch"
-   (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
-   (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
-  (git-cmd project "branch"
-   (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
-   (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
-  (git-cmd project "checkout"
-   (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-  (mapcar
-   (lambda (commit)
-    (typecase commit
-     (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
-     (forgerie-core:patch
-      (let
-       ((patch-file (format nil "~A/working.patch" *working-directory*)))
-       (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
-        (princ (forgerie-core:patch-diff commit) str))
-       (git-cmd project "am" patch-file)
-       (delete-file patch-file)))))
-   (forgerie-core:merge-request-changes mr))
-  (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-  (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-  (let
-   ((gl-mr
-     (post-request
-      (format nil "projects/~A/merge_requests" (getf project :id))
-      `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-        ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-        ("title" . ,(forgerie-core:merge-request-title mr))))))
+ (when-unmapped (:merge-request (forgerie-core:merge-request-id mr))
+  (let*
+   ((project-name
+     (forgerie-core:vc-repository-name
+      (forgerie-core:merge-request-vc-repository
+       mr)))
+    (project (find-project-by-name project-name)))
+   (create-local-checkout project)
+   (git-cmd project "branch"
+    (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
+    (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+   (git-cmd project "branch"
+    (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
+    (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+   (git-cmd project "checkout"
+    (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
    (mapcar
-    (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :id) note))
-    (forgerie-core:merge-request-notes mr)))))
+    (lambda (commit)
+     (typecase commit
+      (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
+      (forgerie-core:patch
+       (let
+        ((patch-file (format nil "~A/working.patch" *working-directory*)))
+        (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
+         (princ (forgerie-core:patch-diff commit) str))
+        (git-cmd project "am" patch-file)
+        (delete-file patch-file)))))
+    (forgerie-core:merge-request-changes mr))
+   (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+   (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+   (let
+    ((gl-mr
+      (update-mapping (:merge-request (forgerie-core:merge-request-id mr))
+       (post-request
+        (format nil "projects/~A/merge_requests" (getf project :id))
+        `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+          ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+          ("title" . ,(forgerie-core:merge-request-title mr)))))))
+    (mapcar
+     (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :id) note))
+     (forgerie-core:merge-request-notes mr))))))
 
 (defun create-snippet (snippet)
- (when
-  (/= 1 (length (forgerie-core:snippet-files snippet)))
-  (error "Can only export snippets with exactly one file for now"))
- (let*
-  ((default-project (default-project))
-   (file (first (forgerie-core:snippet-files snippet)))
-   (gl-snippet
-    (post-request
-     (format nil "/projects/~A/snippets" (getf default-project :id))
-     ; This is deprecated, but it's an easier interface for now.  Someday we may have
-     ; an importer that has more than one file, or gitlab may fully remove this, and
-     ; then this code will need to be updated
-     ;
-     ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
-    `(("title" . ,(forgerie-core:snippet-title snippet))
-      ("content" . ,(forgerie-core:file-data file))
-      ("visibility" . "public")
-      ("file_name" . ,(forgerie-core:file-name file))))))
-  (list
-   gl-snippet
-   (mapcar
-    (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
-    (forgerie-core:snippet-notes snippet)))))
+ (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
+  (when
+   (/= 1 (length (forgerie-core:snippet-files snippet)))
+   (error "Can only export snippets with exactly one file for now"))
+  (handler-case
+   (let*
+    ((default-project (default-project))
+     (file (first (forgerie-core:snippet-files snippet)))
+     (gl-snippet
+      (update-mapping (:snippet (forgerie-core:snippet-id snippet))
+       (post-request
+        (format nil "/projects/~A/snippets" (getf default-project :id))
+        ; This is deprecated, but it's an easier interface for now.  Someday we may have
+        ; an importer that has more than one file, or gitlab may fully remove this, and
+        ; then this code will need to be updated
+        ;
+        ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
+       `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
+         ("content" . ,(forgerie-core:file-data file))
+         ("visibility" . "public")
+         ("file_name" . ,(forgerie-core:file-name file)))))))
+    (list
+     gl-snippet
+     (mapcar
+      (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
+      (forgerie-core:snippet-notes snippet))))
+   (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e)))))
