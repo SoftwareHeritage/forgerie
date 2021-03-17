@@ -188,8 +188,15 @@
 
 (defun get-repositories ()
  (let
-  ((repositories (query "select phid, repositoryslug, name, localpath from phabricator_repository.repository")))
-  (mapcar #'attach-projects-to-repository repositories)))
+  ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository")))
+  (mapcar #'attach-projects-to-repository
+   (remove-if
+    (lambda (repo)
+     (eql :skip
+      (getf
+       (find (repository-id repo) *repository-overrides* :key (lambda (override) (getf override :key)))
+        :action)))
+    repositories))))
 
 (defun get-file (file-phid)
  (let*
@@ -315,14 +322,13 @@
           (list "-t" (repository-commit-commitidentifier commit)))))
        (string=
         (format nil "undefined~%")
-        (second
-         (multiple-value-list
-          (forgerie-core:git-cmd
-           (repository-localpath repository)
-           "name-rev"
-           (list
-            "--name-only"
-            (repository-commit-commitidentifier commit))))))
+        (nth-value 1
+         (forgerie-core:git-cmd
+          (repository-localpath repository)
+          "name-rev"
+          (list
+           "--name-only"
+           (repository-commit-commitidentifier commit)))))
        ; Remove merge commits
        (< 1 (length (repository-commit-parents commit)))))
      (mapcar #'get-commit
@@ -357,14 +363,13 @@
       (lambda (sha) (list sha (get-details repository sha)))
       (cl-ppcre:split
        "\\n"
-       (second
-        (multiple-value-list
-         (forgerie-core:git-cmd
-          (repository-localpath repository)
-          "log"
-          (list
-           "--all"
-           "--pretty=%H")))))))
+       (nth-value 1
+        (forgerie-core:git-cmd
+         (repository-localpath repository)
+         "log"
+         (list
+          "--all"
+          "--pretty=%H"))))))
     *sha-detail-cache*)))
  (cdr (assoc (repository-phid repository) *sha-detail-cache* :test #'string=)))
 
@@ -391,12 +396,11 @@
        (cons
         (list
          :patch
-         (second
-          (multiple-value-list
-           (forgerie-core:git-cmd
-            (repository-localpath staging-repository)
-            "format-patch"
-            (list "-k" "-1" "--stdout" (format nil "phabricator/diff/~A~~~A" diff-id n))))))
+         (nth-value 1
+          (forgerie-core:git-cmd
+           (repository-localpath staging-repository)
+           "format-patch"
+           (list "-k" "-1" "--stdout" (format nil "phabricator/diff/~A~~~A" diff-id n)))))
        (build-commit-chain diff-id (1+ n)))))))
    (let
     ((commit-chain (reverse (build-commit-chain (differential-diff-id latest-diff)))))
@@ -448,13 +452,12 @@
      (list
       :repositoryid (repository-id repository)
       :patch
-      (second
-       (multiple-value-list
+      (nth-value 1
        (forgerie-core:git-cmd path "format-patch"
         (list
          "-k"
          "-1"
-         "--stdout"))))
+         "--stdout")))
       :parents
       (list
        (list
@@ -490,18 +493,21 @@
     (let
      ((repository (get-repository (differential-revision-repositoryphid rev))))
      (handler-case
-      (append
-       rev
-       (list :comments (get-revision-comments rev))
-       (list :related-commits
-        (cached
-         "revision_commits"
-         (differential-revision-id rev)
-         (or
-          (get-commits-from-db rev)
-          (ignore-errors (get-commits-from-staging rev))
-          (build-raw-commit rev))))
-       (list :repository repository))
+      (cached
+       "revisions"
+       (differential-revision-id rev)
+       (append
+        rev
+        (list :comments (get-revision-comments rev))
+        (list :related-commits
+         (cached
+          "revision_commits"
+          (differential-revision-id rev)
+          (or
+           (get-commits-from-db rev)
+           (ignore-errors (get-commits-from-staging rev))
+           (build-raw-commit rev))))
+        (list :repository repository)))
       (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
    (remove-if
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
@@ -532,6 +538,7 @@
      (t (error "Unknown revision type: ~A" (differential-revision-status revision-def))))))
 
   (forgerie-core:make-merge-request
+   :id (differential-revision-id revision-def)
    :title (differential-revision-title revision-def)
    :description (map 'string #'code-char (differential-revision-summary revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
@@ -555,10 +562,7 @@
   :slug (repository-repositoryslug repository-def)
   :projects (mapcar #'convert-project-to-core (repository-projects repository-def))
   :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
-  :git-location
-  (format nil "~A~A.git"
-   *git-location*
-   (repository-repositoryslug repository-def))))
+  :git-location (repository-localpath repository-def)))
 
 (defun convert-project-to-core (project-def)
  (forgerie-core:make-project
@@ -609,15 +613,9 @@
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (initialize)
  (list
-  :users
-  (mapcar #'convert-user-to-core (get-users))
-  :projects
-  (mapcar #'convert-project-to-core (get-projects))
-  :vc-repositories
-  (mapcar #'convert-repository-to-core (get-repositories))
-  :snippets
-  (mapcar #'convert-paste-to-core (get-pastes))
-  :merge-requests
-  (mapcar #'convert-revision-to-core (get-revisions))
-  :tickets
-  (mapcar #'convert-task-to-core (get-tasks))))
+  :users (cached "everything" "users" (mapcar #'convert-user-to-core (get-users)))
+  :projects (cached "everything" "projects" (mapcar #'convert-project-to-core (get-projects)))
+  :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)))
+  :snippets (cached "everything" "snippets" (mapcar #'convert-paste-to-core (get-pastes)))
+  :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)))
+  :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)))))

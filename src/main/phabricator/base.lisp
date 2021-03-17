@@ -20,3 +20,5 @@
 ; For each of these, the project at key :key will be assigned to, and only to, repository :repository
 (defvar *project-assignment-overrides* nil)
 
+(defvar *repository-overrides* nil)
+
