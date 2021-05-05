@@ -17,11 +17,11 @@
 (getf-convenience file-storageblob data)
 (getf-convenience paste id phid title filephid file comments)
 (getf-convenience paste-comment author authorphid content datecreated)
-(getf-convenience project id phid icon name)
+(getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
-(getf-convenience task id phid title projects comments)
+(getf-convenience task id phid title status projects comments owner ownerphid)
 (getf-convenience task-comment author authorphid content datecreated)
 (getf-convenience user username realname phid emails)
 (getf-convenience differential-revision
@@ -121,8 +121,8 @@
  (append
   task
   (list
-   :comments
-   (get-task-comments task))
+   :owner (when (task-ownerphid task) (get-user (task-ownerphid task)))
+   :comments (get-task-comments task))
   (list
    :projects
    (mapcar #'get-project
@@ -431,14 +431,13 @@
       (with-input-from-string (in raw-diff)
        (forgerie-core:git-cmd path "apply" (list "-") :input in :error nil))))
     (find-parent-sha (&optional (shas (mapcar #'car (get-shas-and-details repository))))
-     (with-output-to-string (out)
-      (cond
-       ((not shas)
-        (with-open-file (debug-file "~/diff.patch" :direction :output :if-exists :supersede)
-         (princ raw-diff debug-file))
-        (error "Couldn't find a sha for which this could be applied"))
-       ((sha-applicable (car shas)) (car shas))
-       (t (find-parent-sha (cdr shas)))))))
+     (cond
+      ((not shas)
+       (with-open-file (debug-file "~/diff.patch" :direction :output :if-exists :supersede)
+        (princ raw-diff debug-file))
+       (error "Couldn't find a sha for which this could be applied"))
+      ((sha-applicable (car shas)) (car shas))
+      (t (find-parent-sha (cdr shas))))))
    (let
     ((parent-commit-sha (find-parent-sha)))
     (forgerie-core:git-cmd path "add" (list "."))
@@ -533,7 +532,7 @@
     (cond
      ((find (differential-revision-status revision-def) (list "published" "abandoned") :test #'string=)
       :closed)
-     ((find (differential-revision-status revision-def) (list "changes-planned" "needs-review" "needs-revision" "accepted") :test #'string=)
+     ((find (differential-revision-status revision-def) (list "changes-planned" "needs-review" "needs-revision" "accepted" "draft") :test #'string=)
       :open)
      (t (error "Unknown revision type: ~A" (differential-revision-status revision-def))))))
 
