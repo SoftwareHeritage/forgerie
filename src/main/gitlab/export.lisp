@@ -96,11 +96,11 @@
    merge-requests)))
 
 (defun find-project-by-name (name)
- (first
-  (get-request
-   "projects"
-   ; This is a list of one item in order to get past validation
-   :parameters `(("search" . ,name)))))
+ (find
+  name
+  (get-request "projects" :parameters `(("search" . ,name)))
+  :test #'string=
+  :key (lambda (gl-project) (getf gl-project :name))))
 
 (defun default-project ()
  (find-project-by-name (getf *default-project* :name)))
@@ -109,10 +109,16 @@
  (when-unmapped-with-update (:project :default-project)
   (post-request
    "projects"
-   `(("name" . ,(getf *default-project* :name))
-     ("issues_access_level" . "enabled")
-     ("snippets_access_level" . "enabled")
-     ("path" . ,(getf *default-project* :path))))))
+   (append
+    (when *default-group*
+     (list
+      (cons
+       "namespace_id"
+       (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
+    `(("name" . ,(getf *default-project* :name))
+      ("issues_access_level" . "enabled")
+      ("snippets_access_level" . "enabled")
+      ("path" . ,(getf *default-project* :path)))))))
 
 (defun default-group ()
  (when *default-group*
@@ -141,8 +147,8 @@
  (find-project-by-name (forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories)))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
- (create-default-project)
  (create-default-group)
+ (create-default-project)
  (add-ssh-key)
  (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
@@ -234,13 +240,25 @@
       (forgerie-core:merge-request-vc-repository
        mr)))
     (project (find-project-by-name project-name)))
+   (when (not project)
+    (error "Could not find project with name: ~A" project-name))
    (create-local-checkout project)
-   (git-cmd project "branch"
-    (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
-    (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
-   (git-cmd project "branch"
-    (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
-    (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+   (when
+    (not
+     (zerop
+      (git-cmd-code project "show-ref" "--verify" "--quiet"
+       (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))))))
+    (git-cmd project "branch"
+     (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
+     (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
+   (when
+    (not
+     (zerop
+      (git-cmd-code project "show-ref" "--verify" "--quiet"
+       (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))))
+    (git-cmd project "branch"
+     (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
+     (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
    (git-cmd project "checkout"
     (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
    (mapcar
@@ -266,7 +284,7 @@
           ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
           ("title" . ,(forgerie-core:merge-request-title mr)))))))
     (mapcar
-     (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :id) note))
+     (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
      (forgerie-core:merge-request-notes mr))))))
 
 (defun create-snippet (snippet)
