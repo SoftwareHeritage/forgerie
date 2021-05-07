@@ -73,7 +73,6 @@
      (user-username (task-owner task))
      (format nil "~{#~A~^%~}" (apply #'append (mapcar (lambda (proj) (project-tags proj)) (task-projects))))
 
-     task id, url, title, status, assignee, and current phabricator tags
 (defun validate-tasks ()
  (let
   ((tasks (get-tasks))
