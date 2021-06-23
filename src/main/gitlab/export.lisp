@@ -73,8 +73,8 @@
      ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
      (cond
       ((not vc-repos)
-       (format *error-output* "Ticket with id ~A is not assignable to a repository~%" (forgerie-core:ticket-id ticket))
-       :not-assignable)
+       (format *error-output* "Ticket with id ~A is not assignable to a repository, so assigning to default~%" (forgerie-core:ticket-id ticket))
+       ticket)
       ((< 1 (length vc-repos))
        (format *error-output*
         "Ticket with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
@@ -144,7 +144,11 @@
       ("key" . ,*ssh-public-key*))))))
 
 (defun project-for-ticket (ticket vc-repositories)
- (find-project-by-name (forgerie-core:vc-repository-name (car (ticket-assignable-vc-repositories ticket vc-repositories)))))
+ (let
+  ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
+  (if vc-repos
+   (find-project-by-name (forgerie-core:vc-repository-name (car vc-repos)))
+   (default-project))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
  (create-default-group)
