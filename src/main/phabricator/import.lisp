@@ -67,19 +67,23 @@
 (defun get-emails (user-phid)
  (query (format nil "select * from phabricator_user.user_email where userphid = '~A'" user-phid)))
 
-(defun attach-emails-to-user (user)
+(defun annotate-user (user)
  (append
+  (let
+   ((override (find (user-id user) *user-overrides* :key (lambda (override) (getf override :key)))))
+   (when (and override (eql :update (getf override :action)))
+    (getf override :data)))
   user
   (list :emails (get-emails (user-phid user)))))
 
 (defun get-user (phid)
- (attach-emails-to-user
+ (annotate-user
   (first
-   (query (format nil "select username, realName, phid from phabricator_user.user where phid = '~A'" phid)))))
+   (query (format nil "select id, username, realName, phid from phabricator_user.user where phid = '~A'" phid)))))
 
 (defun get-users ()
- (mapcar #'attach-emails-to-user
-  (query "select username, realName, phid from phabricator_user.user")))
+ (mapcar #'annotate-user
+  (query "select id, username, realName, phid from phabricator_user.user")))
 
 (defun fill-out-project (proj)
  (append
