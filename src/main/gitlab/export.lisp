@@ -201,7 +201,8 @@
     (ensure-directories-exist working-path)
     (git-cmd gl-project "clone" "--mirror" (forgerie-core:vc-repository-git-location vc-repository) ".")
     (git-cmd gl-project "remote" "add" "gitlab" (getf gl-project :ssh_url_to_repo))
-    (git-cmd gl-project "push" "gitlab" "--mirror")
+    (git-cmd gl-project "push" "gitlab" "--all")
+    (git-cmd gl-project "push" "gitlab" "--tags")
     (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
     (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project)))))
 
