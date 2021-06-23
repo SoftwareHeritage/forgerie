@@ -95,12 +95,23 @@
      mr))
    merge-requests)))
 
+; We only cache this in memory, and not on disk, because we most likely want
+; updated information any time a run is fresh.
+(defvar *projects-by-name* nil)
+
 (defun find-project-by-name (name)
- (find
-  name
-  (get-request "projects" :parameters `(("search" . ,name)))
-  :test #'string=
-  :key (lambda (gl-project) (getf gl-project :name))))
+ (when (not (assoc name *projects-by-name* :test #'string=))
+  (setf *projects-by-name*
+   (cons
+    (cons
+     name
+     (find
+       name
+       (get-request "projects" :parameters `(("search" . ,name)))
+       :test #'string=
+       :key (lambda (gl-project) (getf gl-project :name))))
+    *projects-by-name*)))
+ (cdr (assoc name *projects-by-name* :test #'string=)))
 
 (defun default-project ()
  (find-project-by-name (getf *default-project* :name)))
