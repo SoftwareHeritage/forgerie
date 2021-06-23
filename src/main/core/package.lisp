@@ -9,7 +9,7 @@
   #:make-commit #:commit-sha #:commit
   #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit
-  #:make-note #:note-text #:note-author #:note-date
+  #:make-note #:note-text #:note-author #:note-date #:note-id
 
   ; user.lisp
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email

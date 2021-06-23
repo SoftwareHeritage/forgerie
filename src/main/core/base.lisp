@@ -17,4 +17,4 @@
 (defstruct commit sha)
 (defstruct patch diff)
 
-(defstruct note text author date)
+(defstruct note id text author date)
