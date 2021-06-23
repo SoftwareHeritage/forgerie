@@ -44,7 +44,7 @@
    (lambda (user)
     (cond
      ((< (length (forgerie-core:user-username user)) 2)
-      (format *error-output* "User '~A' (~{~A~^,~}) has too short of a username.  Skipping."
+      (format *error-output* "User '~A' (~{~A~^,~}) has too short of a username.  Skipping.~%"
        (forgerie-core:user-username user)
        (mapcar #'forgerie-core:email-address (forgerie-core:user-emails user))))
      (user)))
