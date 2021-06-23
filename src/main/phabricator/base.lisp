@@ -11,6 +11,9 @@
 ; if at all.
 (defvar *revisions-to-skip* nil)
 
+; Pastes that can't be migrated, and will need to be handled manually
+(defvar *pastes-to-skip* nil)
+
 ; This is the http location of the phabricator server
 (defvar *phabricator-location* nil)
 

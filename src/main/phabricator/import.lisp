@@ -257,7 +257,9 @@
       ; and should probably get removed later on
       ((file (ignore-errors (get-file (paste-filephid paste)))))
       (when file (append (list :file file) paste))))
-    (query "select id, title, phid, filePHID from phabricator_paste.paste")))))
+    (remove-if
+     (lambda (paste) (find (paste-id paste) *pastes-to-skip*))
+     (query "select id, title, phid, filePHID from phabricator_paste.paste"))))))
 
 (defun get-commit (phid &optional (with-parents t))
  (let
