@@ -162,6 +162,7 @@
    (default-project))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
+ (ensure-directories-exist *working-directory*)
  (create-default-group)
  (create-default-project)
  (add-ssh-key)
