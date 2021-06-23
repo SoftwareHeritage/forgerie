@@ -16,17 +16,17 @@
 (getf-convenience file storageengine storageformat storagehandle name data)
 (getf-convenience file-storageblob data)
 (getf-convenience paste id phid title filephid file comments)
-(getf-convenience paste-comment author authorphid content datecreated)
+(getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
 (getf-convenience task id phid title status projects comments owner ownerphid)
-(getf-convenience task-comment author authorphid content datecreated)
-(getf-convenience user username realname phid emails)
+(getf-convenience task-comment id author authorphid content datecreated)
+(getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
  id title summary phid status repository repositoryphid datecreated related-commits authorphid comments)
-(getf-convenience differential-comment author authorphid content datecreated)
+(getf-convenience differential-comment id author authorphid content datecreated)
 
 (defvar *query-cache* nil)
 
@@ -113,7 +113,7 @@
   (query
    (format nil
     "select
-        mtc.authorphid, mt.datecreated, mtc.content
+        mtc.id, mtc.authorphid, mt.datecreated, mtc.content
         from phabricator_maniphest.maniphest_transaction mt
         left join phabricator_maniphest.maniphest_transaction_comment mtc on mtc.phid = mt.commentphid
         where commentphid is not null and
@@ -241,7 +241,7 @@
   (query
    (format nil
     "select
-        ptc.authorphid, pt.datecreated, ptc.content
+        ptc.id, ptc.authorphid, pt.datecreated, ptc.content
         from phabricator_paste.paste_transaction pt
         left join phabricator_paste.paste_transaction_comment ptc on ptc.phid = pt.commentphid
         where commentphid is not null and
@@ -480,7 +480,7 @@
   (query
    (format nil
     "select
-        rtc.authorphid, rt.datecreated, rtc.content
+        rtc.id, rtc.authorphid, rt.datecreated, rtc.content
         from phabricator_differential.differential_transaction rt
         left join phabricator_differential.differential_transaction_comment rtc on rtc.phid = rt.commentphid
         where commentphid is not null and
@@ -528,6 +528,7 @@
 
 (defun convert-differential-comment-to-core (comment)
  (forgerie-core:make-note
+  :id (format nil "D~A" (differential-comment-id comment))
   :text (map 'string #'code-char (differential-comment-content comment))
   :author (convert-user-to-core (differential-comment-author comment))
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
@@ -586,6 +587,7 @@
 
 (defun convert-task-comment-to-core (comment)
  (forgerie-core:make-note
+  :id (format nil "T~A" (task-comment-id comment))
   :text (map 'string #'code-char (task-comment-content comment))
   :author (convert-user-to-core (task-comment-author comment))
   :date (unix-to-universal-time (task-comment-datecreated comment))))
@@ -599,6 +601,7 @@
 
 (defun convert-paste-comment-to-core (comment)
  (forgerie-core:make-note
+  :id (format nil "P~A" (paste-comment-id comment))
   :text (map 'string #'code-char (paste-comment-content comment))
   :author (convert-user-to-core (paste-comment-author comment))
   :date (unix-to-universal-time (paste-comment-datecreated comment))))
