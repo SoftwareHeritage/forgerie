@@ -208,29 +208,39 @@
 
 (defun create-note (project-id item-type item-id note)
  (when
-  (not (zerop (length (forgerie-core:note-text note))))
-  (post-request
-   (format nil "/~A~A/~A/notes"
-    (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
-  `(("body" . ,(forgerie-core:note-text note))
-    ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
-   :sudo (forgerie-core:user-username (forgerie-core:note-author note)))))
+  (not (cl-ppcre:scan "^\\s*$" (forgerie-core:note-text note)))
+  (when-unmapped-with-update (:note (forgerie-core:note-id note))
+   (post-request
+    (format nil "/~A~A/~A/notes"
+     (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
+   `(("body" . ,(forgerie-core:note-text note))
+     ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
+    :sudo (forgerie-core:user-username (forgerie-core:note-author note))))))
+
+(defun note-mapped (note)
+ (mapped :note (forgerie-core:note-id note)))
 
 (defun create-ticket (ticket vc-repositories)
- (when-unmapped (:ticket (forgerie-core:ticket-id ticket))
-  (let*
-   ((project-id (getf (project-for-ticket ticket vc-repositories) :id))
-    (ticket-id (prin1-to-string (forgerie-core:ticket-id ticket)))
-    (gl-ticket
+ (when-unmapped (:ticket-completed (forgerie-core:ticket-id ticket))
+  (let
+   ((project-id (getf (project-for-ticket ticket vc-repositories) :id)))
+   (when-unmapped (:ticket (forgerie-core:ticket-id ticket))
+    (let*
+     ((ticket-id (prin1-to-string (forgerie-core:ticket-id ticket))))
      (update-mapping (:ticket (forgerie-core:ticket-id ticket))
       (post-request
        (format nil "projects/~A/issues" project-id)
        `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
          ("title" . ,(forgerie-core:ticket-title ticket)))))))
-   (mapcar
-    (lambda (note)
-     (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
-    (forgerie-core:ticket-notes ticket)))))
+  (when
+   (notevery #'identity (mapcar #'note-mapped (forgerie-core:ticket-notes ticket)))
+   (let
+    ((gl-ticket (get-request (format nil "projects/~A/issues/~A" project-id (forgerie-core:ticket-id ticket)))))
+    (mapcar
+     (lambda (note)
+      (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
+     (forgerie-core:ticket-notes ticket))
+    (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket))))))))
 
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))
@@ -250,70 +260,73 @@
   (git-cmd project "clone" "-o" "gitlab" (getf project :ssh_url_to_repo) ".")))
 
 (defun create-merge-request (mr)
- (when-unmapped (:merge-request (forgerie-core:merge-request-id mr))
+ (when-unmapped (:merge-request-completed (forgerie-core:merge-request-id mr))
   (let*
    ((project-name
      (forgerie-core:vc-repository-name
       (forgerie-core:merge-request-vc-repository
        mr)))
     (project (find-project-by-name project-name)))
-   (when (not project)
-    (error "Could not find project with name: ~A" project-name))
-   (create-local-checkout project)
-   (when
-    (not
-     (zerop
-      (git-cmd-code project "show-ref" "--verify" "--quiet"
-       (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))))))
-    (git-cmd project "branch"
-     (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
-     (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
-   (when
-    (not
-     (zerop
-      (git-cmd-code project "show-ref" "--verify" "--quiet"
-       (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))))
-    (git-cmd project "branch"
-     (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
-     (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
-   (git-cmd project "checkout"
-    (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-   (mapcar
-    (lambda (commit)
-     (typecase commit
-      (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
-      (forgerie-core:patch
-       (let
-        ((patch-file (format nil "~A/working.patch" *working-directory*)))
-        (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
-         (princ (forgerie-core:patch-diff commit) str))
-        (git-cmd project "am" patch-file)
-        (delete-file patch-file)))))
-    (forgerie-core:merge-request-changes mr))
-   (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-   (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-   (let
-    ((gl-mr
-      (update-mapping (:merge-request (forgerie-core:merge-request-id mr))
-       (post-request
-        (format nil "projects/~A/merge_requests" (getf project :id))
-        `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-          ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-          ("title" . ,(forgerie-core:merge-request-title mr)))))))
+   (when-unmapped (:merge-request (forgerie-core:merge-request-id mr))
+    (when (not project)
+     (error "Could not find project with name: ~A" project-name))
+    (create-local-checkout project)
+    (when
+     (not
+      (zerop
+       (git-cmd-code project "show-ref" "--verify" "--quiet"
+        (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))))))
+     (git-cmd project "branch"
+      (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
+      (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
+    (when
+     (not
+      (zerop
+       (git-cmd-code project "show-ref" "--verify" "--quiet"
+        (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))))
+     (git-cmd project "branch"
+      (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
+      (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
+    (git-cmd project "checkout"
+     (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
     (mapcar
-     (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
-     (forgerie-core:merge-request-notes mr))))))
+     (lambda (commit)
+      (typecase commit
+       (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
+       (forgerie-core:patch
+        (let
+         ((patch-file (format nil "~A/working.patch" *working-directory*)))
+         (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
+          (princ (forgerie-core:patch-diff commit) str))
+         (git-cmd project "am" patch-file)
+         (delete-file patch-file)))))
+     (forgerie-core:merge-request-changes mr))
+    (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+    (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+    (update-mapping (:merge-request (forgerie-core:merge-request-id mr))
+     (post-request
+      (format nil "projects/~A/merge_requests" (getf project :id))
+      `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+        ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+        ("title" . ,(forgerie-core:merge-request-title mr))))))
+  (let
+   ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr) (format nil "projects/~A/merge_requests/~~A" (getf project :id)))))
+   (mapcar
+    (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
+    (forgerie-core:merge-request-notes mr))
+   (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr)))))))
 
 (defun create-snippet (snippet)
- (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
-  (when
-   (/= 1 (length (forgerie-core:snippet-files snippet)))
-   (error "Can only export snippets with exactly one file for now"))
-  (handler-case
-   (let*
-    ((default-project (default-project))
-     (file (first (forgerie-core:snippet-files snippet)))
-     (gl-snippet
+ (when-unmapped (:snippet-completed (forgerie-core:snippet-id snippet))
+  (let
+   ((default-project (default-project)))
+   (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
+    (when
+     (/= 1 (length (forgerie-core:snippet-files snippet)))
+     (error "Can only export snippets with exactly one file for now"))
+    (handler-case
+     (let*
+      ((file (first (forgerie-core:snippet-files snippet))))
       (update-mapping (:snippet (forgerie-core:snippet-id snippet))
        (post-request
         (format nil "/projects/~A/snippets" (getf default-project :id))
@@ -325,10 +338,14 @@
        `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
          ("content" . ,(forgerie-core:file-data file))
          ("visibility" . "public")
-         ("file_name" . ,(forgerie-core:file-name file)))))))
-    (list
-     gl-snippet
-     (mapcar
-      (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
-      (forgerie-core:snippet-notes snippet))))
-   (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e)))))
+         ("file_name" . ,(forgerie-core:file-name file))))))
+     (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e))))
+    (let
+     ((gl-snippet (retrieve-mapping :snippet (forgerie-core:snippet-id snippet)
+                   (format nil "/projects/~A/snippets/~~A" (getf default-project :id)))))
+     (list
+      gl-snippet
+      (mapcar
+       (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
+       (forgerie-core:snippet-notes snippet)))
+     (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet)))))

@@ -94,8 +94,18 @@
    (setf
     *mapping*
     (cons
-     (cons (list ,type ,original-id) (getf ,result :id))
+     (cons (list ,type ,original-id) (or (getf ,result :iid) (getf ,result :id)))
      (mapping)))
    (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
     (format ,str "~S" (mapping)))
    ,result)))
+
+(defun retrieve-mapping (type original-id uri)
+ (let
+  ((mapping (find (list type original-id) (mapping) :key #'car :test #'equalp)))
+  (if mapping
+   (get-request (format nil uri (cdr mapping)))
+   (error "Failed to retrieve mapping for ~S" (list type original-id)))))
+
+(defun mapped (type original-id)
+ (find (list type original-id) (mapping) :key #'car :test #'equalp))
