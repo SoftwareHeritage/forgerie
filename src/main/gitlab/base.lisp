@@ -2,7 +2,6 @@
 
 (defvar *server-address* nil)
 (defvar *private-token* nil)
-(defvar *root-password* nil)
 
 (defvar *working-directory* "/tmp/forgerie/gitlab/")
 
