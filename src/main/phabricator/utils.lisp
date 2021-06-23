@@ -71,7 +71,7 @@
      (task-title task)
      (task-status task)
      (user-username (task-owner task))
-     (format nil "~{#~A~^%~}" (apply #'append (mapcar (lambda (proj) (project-tags proj)) (task-projects))))
+     (format nil "~{#~A~^%~}" (apply #'append (mapcar (lambda (proj) (project-tags proj)) (task-projects))))))))
 
 (defun validate-tasks ()
  (let
@@ -101,7 +101,7 @@
              "Task with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
              (task-id task)
              (mapcar #'repository-name repos))))))
-        tasks)))
+        tasks))))))))
 
 (defun unix-to-universal-time (d)
  (+ d (encode-universal-time 0 0 0 1 1 1970 0)))

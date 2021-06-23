@@ -497,7 +497,9 @@
           (differential-revision-id rev)
           (or
            (get-commits-from-db rev)
-           (ignore-errors (get-commits-from-staging rev))
+           (handler-case
+            (get-commits-from-staging rev)
+            (error (e) (format t "Failed to get commit from staging due to error ~A, falling back." e)))
            (build-raw-commit rev))))
         (list :repository repository)))
       (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
