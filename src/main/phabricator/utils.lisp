@@ -110,16 +110,16 @@
 
 (defmacro cached (dir id item)
  (let
-  ((revision-path (gensym))
+  ((cache-path (gensym))
    (obj (gensym)))
  `(let
-   ((,revision-path (format nil "~A/~A/~A" *working-directory* ,dir ,id)))
-   (ensure-directories-exist ,revision-path)
+   ((,cache-path (format nil "~A/~A/~A" *working-directory* ,dir ,id)))
+   (ensure-directories-exist ,cache-path)
    (if
-    (and (probe-file ,revision-path) (not *override-cache*))
-    (with-open-file (str ,revision-path) (read str))
+    (and (probe-file ,cache-path) (not *override-cache*))
+    (with-open-file (str ,cache-path) (read str))
     (let
      ((,obj ,item))
-     (with-open-file (str ,revision-path :direction :output :if-exists :supersede)
+     (with-open-file (str ,cache-path :direction :output :if-exists :supersede)
       (format str "~S" ,obj))
      ,obj)))))

@@ -343,13 +343,6 @@
        (query (format nil "select dst from phabricator_differential.edge where src = '~A' and type = 31"
                (differential-revision-phid revision))))))))))
 
-(defvar *sha-detail-cache*
- (when (probe-file "~/shadetailcache") (with-open-file (str "~/shadetailcache" :direction :input) (read str nil))))
-
-(defun save-details ()
- (with-open-file (str "~/shadetailcache" :direction :output :if-exists :supersede)
-  (format str "~S" *sha-detail-cache*)))
-
 (defun get-details (repository sha)
  (with-output-to-string (out)
   (sb-ext:run-program (asdf:system-relative-pathname :forgerie "bin/getdetails.sh")
@@ -358,26 +351,20 @@
   :output out)))
 
 (defun get-shas-and-details (repository)
- (when
-  (not (assoc (repository-phid repository) *sha-detail-cache* :test #'string=))
-  (setf
-   *sha-detail-cache*
-   (cons
-    (cons
-     (repository-phid repository)
-     (mapcar
-      (lambda (sha) (list sha (get-details repository sha)))
-      (cl-ppcre:split
-       "\\n"
-       (nth-value 1
-        (forgerie-core:git-cmd
-         (repository-localpath repository)
-         "log"
-         (list
-          "--all"
-          "--pretty=%H"))))))
-    *sha-detail-cache*)))
- (cdr (assoc (repository-phid repository) *sha-detail-cache* :test #'string=)))
+ (cached
+  "shas-and-details"
+  (repository-phid repository)
+  (mapcar
+   (lambda (sha) (list sha (get-details repository sha)))
+   (cl-ppcre:split
+    "\\n"
+    (nth-value 1
+     (forgerie-core:git-cmd
+      (repository-localpath repository)
+      "log"
+      (list
+       "--all"
+       "--pretty=%H")))))))
 
 (defun get-commits-from-staging (revision)
  (let*
