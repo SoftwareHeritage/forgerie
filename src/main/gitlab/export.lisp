@@ -172,7 +172,7 @@
     (delete-request (format nil "/projects/~A" (getf project :id)))
     (setf *projects-by-name* nil)
     ; Gitlab returns immediately even though the project is being deleted....
-    (sleep 30)))))
+    (sleep 60)))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
  (ensure-directories-exist *working-directory*)
@@ -248,7 +248,11 @@
       (post-request
        (format nil "projects/~A/issues" project-id)
        `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
-         ("title" . ,(forgerie-core:ticket-title ticket))))))
+         ("title" . ,(forgerie-core:ticket-title ticket))
+         ("description" . ,(forgerie-core:ticket-description ticket))
+         ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
+       :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket))
+       )))
    (when
     (notevery #'identity (mapcar #'note-mapped (forgerie-core:ticket-notes ticket)))
     (let

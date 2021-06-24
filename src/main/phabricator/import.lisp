@@ -21,7 +21,7 @@
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
-(getf-convenience task id phid title status projects comments owner ownerphid)
+(getf-convenience task id phid title status projects comments owner ownerphid description datecreated)
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
@@ -585,7 +585,10 @@
  (forgerie-core:make-ticket
   :id (task-id task-def)
   :title (task-title task-def)
+  :author (convert-user-to-core (task-owner task-def))
+  :description (map 'string #'code-char (task-description task-def))
   :projects (mapcar #'convert-project-to-core (task-projects task-def))
+  :date (unix-to-universal-time (task-datecreated task-def))
   :notes (mapcar #'convert-task-comment-to-core (task-comments task-def))))
 
 (defun convert-paste-comment-to-core (comment)
