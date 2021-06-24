@@ -15,7 +15,7 @@
 (getf-convenience email address isprimary)
 (getf-convenience file storageengine storageformat storagehandle name data)
 (getf-convenience file-storageblob data)
-(getf-convenience paste id phid title filephid file comments)
+(getf-convenience paste id phid title filephid file comments author authorphid)
 (getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
@@ -251,7 +251,11 @@
 
 (defun get-pastes ()
  (mapcar
-  (lambda (paste) (append paste (list :comments (get-paste-comments paste))))
+  (lambda (paste)
+   (append paste
+    (list
+     :author (get-user (paste-authorphid paste))
+     :comments (get-paste-comments paste))))
   (remove
    nil
    (mapcar
@@ -263,7 +267,7 @@
       (when file (append (list :file file) paste))))
     (remove-if
      (lambda (paste) (find (paste-id paste) *pastes-to-skip*))
-     (query "select id, title, phid, filePHID from phabricator_paste.paste"))))))
+     (query "select id, title, phid, filePHID, authorPHID from phabricator_paste.paste"))))))
 
 (defun get-commit (phid &optional (with-parents t))
  (let
@@ -611,6 +615,7 @@
   :id (paste-id paste-def)
   :title (paste-title paste-def)
   :files (list (convert-file-to-core (paste-file paste-def)))
+  :author (convert-user-to-core (paste-author paste-def))
   :notes (mapcar #'convert-paste-comment-to-core (paste-comments paste-def))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))

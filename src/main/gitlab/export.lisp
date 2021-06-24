@@ -176,10 +176,10 @@
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
  (ensure-directories-exist *working-directory*)
+ (when *single-project* (remove-single-project))
  (create-default-group)
  (create-default-project)
  (add-ssh-key)
- (when *single-project* (remove-single-project))
  (let*
   ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
    (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) vc-repositories)))

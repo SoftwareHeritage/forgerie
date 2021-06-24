@@ -4,4 +4,5 @@
  id
  title
  files
+ author
  notes)
