@@ -58,6 +58,9 @@
 (defun post-request (path parameters &key sudo)
  (make-request path :post parameters :sudo sudo))
 
+(defun delete-request (path)
+ (make-request path :delete nil))
+
 (defun put-request (path parameters &key sudo)
  (make-request path :put parameters :sudo sudo))
 
@@ -109,3 +112,12 @@
 
 (defun mapped (type original-id)
  (find (list type original-id) (mapping) :key #'car :test #'equalp))
+
+; This is for development, so that we can export only one project
+; and all the tickets/prs associated with it.
+(defmacro single-project-check (name &rest body)
+ `(when
+   (or
+    (not *single-project*)
+    (string= *single-project* ,name))
+   ,@body))

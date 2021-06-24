@@ -14,3 +14,7 @@
 ; This is of the form
 ; '(:name <name> :path <slug>)
 (defvar *default-group* nil)
+
+; For development only.  Will limit all exporting to things having
+; to do with the project with the name provided.
+(defvar *single-project* nil)
