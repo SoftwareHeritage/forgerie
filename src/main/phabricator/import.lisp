@@ -25,7 +25,7 @@
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
- id title summary phid status repository repositoryphid datecreated related-commits authorphid comments)
+ id title summary phid status repository repositoryphid datecreated related-commits author authorphid comments)
 (getf-convenience differential-comment id author authorphid content datecreated)
 
 (defvar *query-cache* nil)
@@ -490,6 +490,7 @@
        (differential-revision-id rev)
        (append
         rev
+        (list :author (get-user (differential-revision-authorphid rev)))
         (list :comments (get-revision-comments rev))
         (list :related-commits
          (cached
@@ -536,7 +537,9 @@
    :id (differential-revision-id revision-def)
    :title (differential-revision-title revision-def)
    :description (map 'string #'code-char (differential-revision-summary revision-def))
+   :author (convert-user-to-core (differential-revision-author revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
+   :date (unix-to-universal-time (differential-revision-datecreated revision-def))
    :type type
    :target-branch
    (forgerie-core:make-branch

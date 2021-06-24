@@ -5,6 +5,8 @@
  vc-repository
  title
  description
+ date
+ author
 
  ; The type can be one of:
  ; - :open

@@ -331,7 +331,8 @@
        (format nil "projects/~A/merge_requests" (getf project :id))
        `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
          ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-         ("title" . ,(forgerie-core:merge-request-title mr))))))
+         ("title" . ,(forgerie-core:merge-request-title mr)))
+       :sudo (forgerie-core:user-username (forgerie-core:merge-request-author mr)))))
    (let
     ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr) (format nil "projects/~A/merge_requests/~~A" (getf project :id)))))
     (mapcar
