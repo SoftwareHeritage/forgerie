@@ -335,6 +335,9 @@
        :sudo (forgerie-core:user-username (forgerie-core:merge-request-author mr)))))
    (let
     ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr) (format nil "projects/~A/merge_requests/~~A" (getf project :id)))))
+    (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
+    (rails-command (format nil "mr.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
+    (rails-command "mr.save")
     (mapcar
      (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
      (forgerie-core:merge-request-notes mr))
