@@ -121,3 +121,32 @@
     (not *single-project*)
     (string= *single-project* ,name))
    ,@body))
+
+(defvar *rails-connection* nil)
+
+; Each command needs to be a one liner standalone
+(defun rails-command (cmd)
+ (when (not *rails-connection*)
+  (setf
+   *rails-connection*
+   (sb-ext:run-program
+    "/usr/bin/ssh" '("ots-software-heritage-test.com" "sudo gitlab-rails console")
+    :input :stream
+    :output :stream
+    :wait nil))
+  (format (sb-ext:process-input *rails-connection*) "0~%" cmd)
+  (force-output (sb-ext:process-input *rails-connection*))
+  (loop for line = (read-line (sb-ext:process-output *rails-connection*))
+        do (format t "Booting: ~A~%" line)
+        until (string= line "0")))
+ ; The reason we append a 0 on the end of this, is because irb does some funky
+ ; things, expecting you to be running from a terminal with a tty.  So just
+ ; doing a 0 and then checking for that output means we'll A) know when the
+ ; command is done and B) not run into these no tty errors.
+ (format (sb-ext:process-input *rails-connection*) "~A;0~%" cmd)
+ (force-output (sb-ext:process-input *rails-connection*))
+ (let
+  ((line (read-line (sb-ext:process-output *rails-connection*))))
+  (loop for line = (read-line (sb-ext:process-output *rails-connection*))
+        do (format t "Running: ~A~%" line)
+        until (string= line "0"))))
