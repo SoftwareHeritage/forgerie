@@ -511,7 +511,7 @@
    (remove-if
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
     ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
-    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision order by id desc")))))
+    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision")))))
 
 (defun convert-commit-to-core (commit)
  (cond
