@@ -376,4 +376,8 @@
        (mapcar
         (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
         (forgerie-core:snippet-notes snippet)))
+      (rails-command (format nil "s = Snippet.find(~A)" (getf gl-snippet :id)))
+      (rails-command (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (forgerie-core:snippet-author snippet))))
+      (rails-command "s.author = u")
+      (rails-command "s.save")
       (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))
