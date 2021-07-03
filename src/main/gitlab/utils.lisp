@@ -129,8 +129,7 @@
  (when (not *rails-connection*)
   (setf
    *rails-connection*
-   (sb-ext:run-program
-    "/usr/bin/ssh" '("ots-software-heritage-test.com" "sudo gitlab-rails console")
+   (sb-ext:run-program "/usr/bin/ssh" *rails-console-ssh-args*
     :input :stream
     :output :stream
     :wait nil))

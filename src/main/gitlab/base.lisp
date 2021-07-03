@@ -18,3 +18,8 @@
 ; For development only.  Will limit all exporting to things having
 ; to do with the project with the name provided.
 (defvar *single-project* nil)
+
+; The args (host and command are normal) for the ssh command to
+; boot the rails console.  Sometimes this is localhost.  Keys
+; have to be set up.
+(defvar *rails-console-ssh-args* nil)
