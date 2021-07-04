@@ -261,6 +261,10 @@
       (lambda (note)
        (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
       (forgerie-core:ticket-notes ticket))
+     (when (eql :closed (forgerie-core:ticket-type ticket))
+      (put-request
+       (format nil "projects/~A/issues/~A" project-id (getf gl-ticket :iid))
+       '(("state_event" . "close"))))
      (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket)))))))))
 
 (defun create-user (user)

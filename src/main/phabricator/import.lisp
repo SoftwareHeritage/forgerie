@@ -589,14 +589,23 @@
   :date (unix-to-universal-time (task-comment-datecreated comment))))
 
 (defun convert-task-to-core (task-def)
- (forgerie-core:make-ticket
-  :id (task-id task-def)
-  :title (task-title task-def)
-  :author (convert-user-to-core (task-owner task-def))
-  :description (map 'string #'code-char (task-description task-def))
-  :projects (mapcar #'convert-project-to-core (task-projects task-def))
-  :date (unix-to-universal-time (task-datecreated task-def))
-  :notes (mapcar #'convert-task-comment-to-core (task-comments task-def))))
+ (let
+  ((type
+    (cond
+     ((find (task-status task-def) (list "open" "wip") :test #'string=)
+      :open)
+     ((find (task-status task-def) (list "duplicate" "invalid" "resolved" "spite" "wontfix") :test #'string=)
+      :closed)
+     (t (error "Unknown revision type: ~A" (differential-revision-status revision-def))))))
+  (forgerie-core:make-ticket
+   :id (task-id task-def)
+   :title (task-title task-def)
+   :author (convert-user-to-core (task-owner task-def))
+   :description (map 'string #'code-char (task-description task-def))
+   :projects (mapcar #'convert-project-to-core (task-projects task-def))
+   :date (unix-to-universal-time (task-datecreated task-def))
+   :type type
+   :notes (mapcar #'convert-task-comment-to-core (task-comments task-def)))))
 
 (defun convert-paste-comment-to-core (comment)
  (forgerie-core:make-note
