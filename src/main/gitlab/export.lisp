@@ -341,6 +341,12 @@
     (mapcar
      (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
      (forgerie-core:merge-request-notes mr))
+    (when (eql :closed (forgerie-core:merge-request-type mr))
+     (put-request
+      (format nil "projects/~A/merge_requests/~A" (getf project :id) (getf gl-mr :iid))
+      '(("state_event" . "close")))
+     (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+     (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
     (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr))))))))
 
 (defun create-snippet (snippet)
