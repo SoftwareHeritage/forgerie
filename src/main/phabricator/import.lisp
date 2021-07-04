@@ -568,6 +568,7 @@
 
 (defun convert-project-to-core (project-def)
  (forgerie-core:make-project
+  :tags (project-tags project-def)
   :name (project-name project-def)))
 
 (defun convert-email-to-core (email-def)

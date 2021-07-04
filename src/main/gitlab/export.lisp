@@ -197,7 +197,12 @@
  (single-project-check (forgerie-core:vc-repository-name vc-repository)
   (when-unmapped (:project (forgerie-core:vc-repository-slug vc-repository))
    (let*
-    ((gl-project
+    ((tags
+      (remove-duplicates
+       (apply #'append
+        (mapcar #'forgerie-core:project-tags (forgerie-core:vc-repository-projects vc-repository)))
+       :test #'string=))
+     (gl-project
       (post-request
        "projects"
        (append
@@ -208,6 +213,7 @@
            (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
        `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
          ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+         ("tag_list" . ,(format nil "~{~A~^,~}" tags))
          ("issues_access_level" . "enabled")
          ("merge_requests_access_level" . "enabled")))))
      (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))

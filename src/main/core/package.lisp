@@ -15,7 +15,7 @@
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
 
   ; project.lisp
-  #:make-project #:project-name
+  #:make-project #:project-name #:project-tags
 
   ; ticket.lisp
   #:make-ticket #:ticket-id #:ticket-projects #:ticket-title #:ticket-notes #:ticket-author #:ticket-description #:ticket-date
