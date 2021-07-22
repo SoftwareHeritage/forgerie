@@ -362,38 +362,41 @@
 (defun create-snippet (snippet)
  (single-project-check (getf *default-project* :name)
   (when-unmapped (:snippet-completed (forgerie-core:snippet-id snippet))
+   (when
+    (/= 1 (length (forgerie-core:snippet-files snippet)))
+    (error "Can only export snippets with exactly one file for now"))
    (let
-    ((default-project (default-project)))
-    (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
-     (when
-      (/= 1 (length (forgerie-core:snippet-files snippet)))
-      (error "Can only export snippets with exactly one file for now"))
-     (handler-case
-      (let*
-       ((file (first (forgerie-core:snippet-files snippet))))
-       (update-mapping (:snippet (forgerie-core:snippet-id snippet))
-        (post-request
-         (format nil "/projects/~A/snippets" (getf default-project :id))
-         ; This is deprecated, but it's an easier interface for now.  Someday we may have
-         ; an importer that has more than one file, or gitlab may fully remove this, and
-         ; then this code will need to be updated
-         ;
-         ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
-        `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
-          ("content" . ,(forgerie-core:file-data file))
-          ("visibility" . "public")
-          ("file_name" . ,(forgerie-core:file-name file))))))
-      (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e))))
-     (let
-      ((gl-snippet (retrieve-mapping :snippet (forgerie-core:snippet-id snippet)
-                    (format nil "/projects/~A/snippets/~~A" (getf default-project :id)))))
-      (list
-       gl-snippet
-       (mapcar
-        (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
-        (forgerie-core:snippet-notes snippet)))
-      (rails-command (format nil "s = Snippet.find(~A)" (getf gl-snippet :id)))
-      (rails-command (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (forgerie-core:snippet-author snippet))))
-      (rails-command "s.author = u")
-      (rails-command "s.save")
-      (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))
+    ((default-project (default-project))
+     (file (first (forgerie-core:snippet-files snippet))))
+    (if
+     (zerop (length (forgerie-core:file-data file)))
+     (format *error-output* "Skipping snippet ~A because empty content" (forgerie-core:snippet-id snippet))
+     (progn
+      (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
+       (handler-case
+        (update-mapping (:snippet (forgerie-core:snippet-id snippet))
+         (post-request
+          (format nil "/projects/~A/snippets" (getf default-project :id))
+          ; This is deprecated, but it's an easier interface for now.  Someday we may have
+          ; an importer that has more than one file, or gitlab may fully remove this, and
+          ; then this code will need to be updated
+          ;
+          ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
+         `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
+           ("content" . ,(forgerie-core:file-data file))
+           ("visibility" . "public")
+           ("file_name" . ,(forgerie-core:file-name file)))))
+        (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e))))
+       (let
+        ((gl-snippet (retrieve-mapping :snippet (forgerie-core:snippet-id snippet)
+                      (format nil "/projects/~A/snippets/~~A" (getf default-project :id)))))
+        (list
+         gl-snippet
+         (mapcar
+          (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
+          (forgerie-core:snippet-notes snippet)))
+        (rails-command (format nil "s = Snippet.find(~A)" (getf gl-snippet :id)))
+        (rails-command (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (forgerie-core:snippet-author snippet))))
+        (rails-command "s.author = u")
+        (rails-command "s.save")
+        (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))))
