@@ -513,6 +513,40 @@
     ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
     (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision")))))
 
+(defun parse-comment (comment)
+ (labels
+  ((first-instance-of (regex type &optional (comment comment))
+    (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan regex comment)
+     (cond
+      ((not start) nil)
+      ((or (zerop start) (= end (length comment)))
+       (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))
+      ((cl-ppcre:scan "[\\d\\w]" (subseq comment (1- start) start))
+       (first-instance-of regex type (subseq comment end)))
+      ((cl-ppcre:scan "[\\d\\w]" (subseq comment end (1+ end)))
+       (first-instance-of regex type (subseq comment end)))
+      (t
+       (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))))))
+  (let*
+   ((first-instance
+     (car
+      (sort
+       (remove-if-not #'identity
+        (list
+         (first-instance-of "T(\\d+)" :ticket)
+         (first-instance-of "P(\\d+)" :snippet)
+         (first-instance-of "D(\\d+)" :merge-request)))
+       #'<
+       :key #'car))))
+   (cond
+    ((zerop (length comment)) nil)
+    ((not first-instance) (list comment))
+    (t
+     (append
+      (when (not (zerop (car first-instance))) (list (subseq comment 0 (car first-instance))))
+      (list (cddr first-instance))
+      (parse-comment (subseq comment (cadr first-instance)))))))))
+
 (defun convert-commit-to-core (commit)
  (cond
   ((repository-commit-commitidentifier commit)
@@ -523,7 +557,7 @@
 (defun convert-differential-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "D~A" (differential-comment-id comment))
-  :text (map 'string #'code-char (differential-comment-content comment))
+  :text (parse-comment (map 'string #'code-char (differential-comment-content comment)))
   :author (convert-user-to-core (differential-comment-author comment))
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
 
@@ -540,7 +574,7 @@
   (forgerie-core:make-merge-request
    :id (differential-revision-id revision-def)
    :title (differential-revision-title revision-def)
-   :description (map 'string #'code-char (differential-revision-summary revision-def))
+   :description (parse-comment (map 'string #'code-char (differential-revision-summary revision-def)))
    :author (convert-user-to-core (differential-revision-author revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
    :date (unix-to-universal-time (differential-revision-datecreated revision-def))
@@ -585,7 +619,7 @@
 (defun convert-task-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "T~A" (task-comment-id comment))
-  :text (map 'string #'code-char (task-comment-content comment))
+  :text (parse-comment (map 'string #'code-char (task-comment-content comment)))
   :author (convert-user-to-core (task-comment-author comment))
   :date (unix-to-universal-time (task-comment-datecreated comment))))
 
@@ -602,7 +636,7 @@
    :id (task-id task-def)
    :title (task-title task-def)
    :author (convert-user-to-core (task-owner task-def))
-   :description (map 'string #'code-char (task-description task-def))
+   :description (parse-comment (map 'string #'code-char (task-description task-def)))
    :projects (mapcar #'convert-project-to-core (task-projects task-def))
    :date (unix-to-universal-time (task-datecreated task-def))
    :type type
@@ -611,7 +645,7 @@
 (defun convert-paste-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "P~A" (paste-comment-id comment))
-  :text (map 'string #'code-char (paste-comment-content comment))
+  :text (parse-comment (map 'string #'code-char (paste-comment-content comment)))
   :author (convert-user-to-core (paste-comment-author comment))
   :date (unix-to-universal-time (paste-comment-datecreated comment))))
 

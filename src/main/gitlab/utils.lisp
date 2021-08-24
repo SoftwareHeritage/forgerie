@@ -68,6 +68,8 @@
  (multiple-value-bind (sec min hr date month year) (decode-universal-time d 0)
   (format nil "~A-~2,,,'0@A-~2,,,'0@AT~2,,,'0@A:~2,,,'0@A:~2,,,'0@AZ" year month date hr min sec)))
 
+(defstruct mapped-item type original-id id iid project-id)
+
 (defun mapping-file ()
  (format nil "~A/mapping" *working-directory*))
 
@@ -78,10 +80,19 @@
   *mapping*
   (setf *mapping* (when (probe-file (mapping-file)) (with-open-file (str (mapping-file)) (read str))))))
 
+(defun find-mapped-item (type original-id)
+ (find
+  (list type original-id)
+  (mapping)
+  :key
+  (lambda (mi)
+   (list
+    (mapped-item-type mi)
+    (mapped-item-original-id mi)))
+  :test #'equalp))
+
 (defmacro when-unmapped ((type original-id) &rest body)
- `(when
-   (not (find (list ,type ,original-id) (mapping) :key #'car :test #'equalp))
-   ,@body))
+ `(when (not (find-mapped-item ,type ,original-id)) ,@body))
 
 (defmacro when-unmapped-with-update ((type original-id) &rest body)
  `(when-unmapped (,type ,original-id)
@@ -97,21 +108,34 @@
    (setf
     *mapping*
     (cons
-     (cons (list ,type ,original-id) (or (getf ,result :iid) (getf ,result :id)))
+     (make-mapped-item
+      :type ,type
+      :original-id ,original-id
+      :id (getf ,result :id)
+      :iid (getf ,result :iid)
+      :project-id (getf ,result :project_id))
      (mapping)))
    (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
     (format ,str "~S" (mapping)))
    ,result)))
 
-(defun retrieve-mapping (type original-id uri)
+(defun retrieve-mapping (type original-id)
  (let
-  ((mapping (find (list type original-id) (mapping) :key #'car :test #'equalp)))
-  (if mapping
-   (get-request (format nil uri (cdr mapping)))
+  ((mi (find-mapped-item type original-id)))
+  (if mi
+   (get-request
+    (format
+     nil
+     "projects/~A/~A/~A"
+     (mapped-item-project-id mi)
+     (case (mapped-item-type mi)
+      (:snippet "snippets")
+      (:merge-request "merge_requests")
+      (:ticket "issues"))
+     (or
+      (mapped-item-iid mi)
+      (mapped-item-id mi))))
    (error "Failed to retrieve mapping for ~S" (list type original-id)))))
-
-(defun mapped (type original-id)
- (find (list type original-id) (mapping) :key #'car :test #'equalp))
 
 ; This is for development, so that we can export only one project
 ; and all the tickets/prs associated with it.
@@ -147,5 +171,5 @@
  (let
   ((line (read-line (sb-ext:process-output *rails-connection*))))
   (loop for line = (read-line (sb-ext:process-output *rails-connection*))
-        do (format t "Running: ~A~%" line)
+        do (when forgerie-core:*debug* (format t "Running: ~A~%" line))
         until (string= line "0"))))

@@ -1,5 +1,11 @@
 (in-package #:forgerie-gitlab)
 
+(define-condition unknown-note-mapping
+ nil
+ ((mapping :initarg :mapping :reader unknown-note-mapping-mapping)))
+
+(defvar *note-mapping-skips* nil)
+
 (defun validate-vc-repositories (vc-repositories projects)
  (let
   ((valid-projects
@@ -98,20 +104,27 @@
 ; We only cache this in memory, and not on disk, because we most likely want
 ; updated information any time a run is fresh.
 (defvar *projects-by-name* nil)
+(defvar *projects-by-id* nil)
 
 (defun find-project-by-name (name)
  (when (not (assoc name *projects-by-name* :test #'string=))
-  (setf *projects-by-name*
-   (cons
-    (cons
-     name
+  (let
+   ((project 
      (find
-       name
-       (get-request "projects" :parameters `(("search" . ,name)))
-       :test #'string=
-       :key (lambda (gl-project) (getf gl-project :name))))
-    *projects-by-name*)))
+      name
+      (get-request "projects" :parameters `(("search" . ,name)))
+      :test #'string=
+      :key (lambda (gl-project) (getf gl-project :name)))))
+   (setf *projects-by-name* (cons (cons name project) *projects-by-name*))
+   (setf *projects-by-id* (cons (cons (getf project :id) project) *projects-by-id*))))
  (cdr (assoc name *projects-by-name* :test #'string=)))
+
+(defun find-project-by-id (id)
+ (when (not (assoc id *projects-by-id*))
+  (let
+   ((project (get-request (format nil "projects/~A" id))))
+   (setf *projects-by-id* (cons (cons (getf project :id) project) *projects-by-id*))))
+ (cdr (assoc id *projects-by-id*)))
 
 (defun default-project ()
  (find-project-by-name (getf *default-project* :name)))
@@ -181,14 +194,42 @@
  (create-default-project)
  (add-ssh-key)
  (let*
-  ((vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
+  ((*note-mapping-skips* nil)
+   (vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
    (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) vc-repositories)))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
   (mapcar #'create-user (validate-users (getf data :users)))
   (mapcar #'create-project vc-repositories)
-  (mapcar (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
-  (mapcar #'create-snippet (getf data :snippets))
-  (mapcar #'create-merge-request merge-requests)))
+  (loop
+   :with moved-forward := t
+   :with completed := nil
+   :with most-recent-error := nil
+   :while moved-forward
+   :do
+   (flet
+    ((map-with-note-mapping-catch (fn collection)
+      (mapcar
+       (lambda (item)
+        (when (not (find item completed :test #'equalp))
+         (handler-case
+          (progn
+           (funcall fn item)
+           (format t "We have moved forward on ~S~%" item)
+           (setf moved-forward t)
+           (setf completed (cons item completed)))
+          (unknown-note-mapping (e)
+           (setf most-recent-error (unknown-note-mapping-mapping e))
+           (format t "Ok, retrying due to error ~S~%" (unknown-note-mapping-mapping e))))))
+       collection)))
+     (setf moved-forward nil)
+     (setf most-recent-error nil)
+     (map-with-note-mapping-catch (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
+     (map-with-note-mapping-catch #'create-snippet (getf data :snippets))
+     (map-with-note-mapping-catch #'create-merge-request merge-requests)
+     (when (and (not moved-forward) most-recent-error)
+      (format t "We failed to move forward...., so skipping item ~A~%" most-recent-error)
+      (setf moved-forward t)
+      (push most-recent-error *note-mapping-skips*))))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
@@ -227,19 +268,45 @@
      (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
      (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project))))))
 
+(defun process-note-text (note-text project-id)
+ (format nil "~{~A~}"
+  (mapcar
+   (lambda (item)
+    (flet
+     ((mapped-item-p (item type) (and (eql type (car item)) (find-mapped-item type (parse-integer (cadr item)))))
+      (handle-mapped-item (item type c)
+       (let
+        ((mi (find-mapped-item type (parse-integer (cadr item)))))
+        (if (equal project-id (mapped-item-project-id mi))
+         (format nil "~A~A (was ~A)" c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item))
+         (let
+          ((other-project (find-project-by-id (mapped-item-project-id mi))))
+          (format nil "~A~A~A (was ~A)" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item)))))))
+     (cond
+      ((stringp item) item)
+      ((mapped-item-p item :ticket) (handle-mapped-item item :ticket "#"))
+      ((mapped-item-p item :merge-request) (handle-mapped-item item :merge-request "!"))
+      ((mapped-item-p item :snippet) (handle-mapped-item item :snippet "$"))
+      ((find item *note-mapping-skips* :test #'equalp)
+       (caddr item))
+      (t (error (make-instance 'unknown-note-mapping :mapping item))))))
+   note-text)))
+
 (defun create-note (project-id item-type item-id note)
- (when
-  (not (cl-ppcre:scan "^\\s*$" (forgerie-core:note-text note)))
-  (when-unmapped-with-update (:note (forgerie-core:note-id note))
-   (post-request
-    (format nil "/~A~A/~A/notes"
-     (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
-   `(("body" . ,(forgerie-core:note-text note))
-     ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
-    :sudo (forgerie-core:user-username (forgerie-core:note-author note))))))
+ (let
+  ((note-text (process-note-text (forgerie-core:note-text note) project-id)))
+  (when
+   (not (cl-ppcre:scan "^\\s*$" note-text))
+   (when-unmapped-with-update (:note (forgerie-core:note-id note))
+    (post-request
+     (format nil "/~A~A/~A/notes"
+      (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
+    `(("body" . ,note-text)
+      ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
+     :sudo (forgerie-core:user-username (forgerie-core:note-author note)))))))
 
 (defun note-mapped (note)
- (mapped :note (forgerie-core:note-id note)))
+ (find-mapped-item :find-mapped-item (forgerie-core:note-id note)))
 
 (defun create-ticket (ticket vc-repositories)
  (single-project-check
@@ -255,10 +322,9 @@
        (format nil "projects/~A/issues" project-id)
        `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
          ("title" . ,(forgerie-core:ticket-title ticket))
-         ("description" . ,(forgerie-core:ticket-description ticket))
+         ("description" . ,(process-note-text (forgerie-core:ticket-description ticket) project-id))
          ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
-       :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket))
-       )))
+       :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket)))))
    (when
     (notevery #'identity (mapcar #'note-mapped (forgerie-core:ticket-notes ticket)))
     (let
@@ -344,7 +410,7 @@
          ("title" . ,(forgerie-core:merge-request-title mr)))
        :sudo (forgerie-core:user-username (forgerie-core:merge-request-author mr)))))
    (let
-    ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr) (format nil "projects/~A/merge_requests/~~A" (getf project :id)))))
+    ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
     (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
     (rails-command (format nil "mr.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
     (rails-command "mr.save")
@@ -388,8 +454,7 @@
            ("file_name" . ,(forgerie-core:file-name file)))))
         (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e))))
        (let
-        ((gl-snippet (retrieve-mapping :snippet (forgerie-core:snippet-id snippet)
-                      (format nil "/projects/~A/snippets/~~A" (getf default-project :id)))))
+        ((gl-snippet (retrieve-mapping :snippet (forgerie-core:snippet-id snippet))))
         (list
          gl-snippet
          (mapcar

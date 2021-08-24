@@ -17,4 +17,9 @@
 (defstruct commit sha)
 (defstruct patch diff)
 
+; "text" here is actually a list of:
+; - string - just a string
+; - (:merge-request <id> <original-string>)
+; - (:ticket <id> <original-string>)
+; - (:snippet <id> <original-string>)
 (defstruct note id text author date)
