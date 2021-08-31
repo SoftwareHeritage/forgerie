@@ -33,4 +33,4 @@
       (:file "export")))))
   (:module "config"
    :components ((:file "config"))))
- :depends-on (:cl-mysql :drakma :jsown :cl-ppcre :cl-csv :cl-fad))
+ :depends-on (:cl-mysql :drakma :jsown :cl-ppcre :cl-csv :cl-fad :ironclad))

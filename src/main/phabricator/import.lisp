@@ -20,12 +20,15 @@
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
-(getf-convenience repository-commit id phid repositoryid commitidentifier parents patch)
+(getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments)
 (getf-convenience task id phid title status projects comments owner ownerphid description datecreated)
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
  id title summary phid status repository repositoryphid datecreated related-commits author authorphid comments)
+(getf-convenience differential-transaction-comment
+ phid content changesetid isnewfile linenumber linelength replytocommentphid diff replies author authorphid datecreated)
+(getf-convenience differential-diff sourcecontrolbaserevision filename)
 (getf-convenience differential-comment id author authorphid content datecreated)
 
 (defvar *query-cache* nil)
@@ -479,6 +482,110 @@
             transactiontype = 'core:comment' order by rt.datecreated"
     (differential-revision-phid rev)))))
 
+(defun get-revision-inline-comments (rev)
+ (let*
+  ((phid (differential-revision-phid rev))
+   (comments
+    (query
+     (format nil
+      "select * from phabricator_differential.differential_transaction_comment where revisionphid = '~A'" phid))))
+  (mapcar
+   (lambda (comment)
+    (append
+     comment
+     (list
+      :author
+      (get-user (differential-transaction-comment-authorphid comment))
+      :diff
+      (car
+       (query
+        (format nil
+         "select diff.*, changeset.filename from phabricator_differential.differential_diff diff join phabricator_differential.differential_changeset changeset on changeset.diffid = diff.id where changeset.id = ~A" (differential-transaction-comment-changesetid comment)))))))
+  comments)))
+
+(defun attach-inline-comments-to-commits (commits inline-comments)
+ (flet
+  ((comment-attached-to-commit (comment commit)
+    (find
+     (differential-diff-sourcecontrolbaserevision
+      (differential-transaction-comment-diff comment))
+     (mapcar #'repository-commit-commitidentifier (repository-commit-parents commit))
+     :test #'string=)))
+  (cond
+   ((some
+     (lambda (comment) (/= (differential-transaction-comment-isnewfile comment) 1))
+     inline-comments)
+    (error "Ran into a transaction comment where it's not a new file, can't handle."))
+   ((some
+     (lambda (comment)
+      (notany
+       (lambda (commit) (comment-attached-to-commit comment commit))
+       commits))
+     inline-comments)
+    (error "Inline comment does not have a commit it goes with, can't handle"))
+   (t
+    (mapcar
+     (lambda (commit)
+      (setf
+       (getf commit :comments)
+       (remove-if-not
+        (lambda (comment)
+         (comment-attached-to-commit comment commit))
+        inline-comments))
+      commit)
+     commits)))))
+
+(defun thread-inline-comments (comments)
+ ;(format t "~S~%" comments)
+ (labels
+  ((thread-comment (comment-to-thread comments)
+    (when comments
+     (mapcar
+      (lambda (comment)
+       (if
+        (string=
+         (differential-transaction-comment-replytocommentphid comment-to-thread)
+         (differential-transaction-comment-phid comment))
+        (progn
+         (setf
+          (getf comment :replies)
+          (append
+           (differential-transaction-comment-replies comment)
+           (list comment-to-thread)))
+          comment)
+        (progn
+         (setf
+          (getf comment :replies)
+          (thread-comment comment-to-thread (differential-transaction-comment-replies comment)))
+         comment)))
+     comments))))
+  (let
+   ((comment-to-thread (find-if #'differential-transaction-comment-replytocommentphid comments)))
+   (if
+    (not comment-to-thread)
+    comments
+    (thread-inline-comments
+     (thread-comment
+      comment-to-thread
+      (remove comment-to-thread comments :test #'equalp)))))))
+
+(defun get-revision-commits (rev)
+ (let
+  ((inline-comments (get-revision-inline-comments rev))
+   (commits
+    (cached
+    "revision_commits"
+    (differential-revision-id rev)
+    (or
+     (get-commits-from-db rev)
+     (handler-case
+      (get-commits-from-staging rev)
+      (error (e) (format t "Failed to get commit from staging due to error ~A, falling back." e)))
+     (build-raw-commit rev)))))
+  (attach-inline-comments-to-commits
+   commits
+   (thread-inline-comments inline-comments))))
+
 (defun get-revisions ()
  (remove
   nil
@@ -496,22 +603,12 @@
         rev
         (list :author (get-user (differential-revision-authorphid rev)))
         (list :comments (get-revision-comments rev))
-        (list :related-commits
-         (cached
-          "revision_commits"
-          (differential-revision-id rev)
-          (or
-           (get-commits-from-db rev)
-           (handler-case
-            (get-commits-from-staging rev)
-            (error (e) (format t "Failed to get commit from staging due to error ~A, falling back." e)))
-           (build-raw-commit rev))))
+        (list :related-commits (get-revision-commits rev))
         (list :repository repository)))
       (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
    (remove-if
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
-    ; 4700 here is just for testing purposes, so that we limit to only 300 or so diffs
-    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision")))))
+    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision where id = 5926")))))
 
 (defun parse-comment (comment)
  (labels
@@ -554,6 +651,22 @@
   ((repository-commit-patch commit)
    (forgerie-core:make-patch :diff (repository-commit-patch commit)))))
 
+(defun convert-change-to-core (commit)
+ (labels
+  ((convert-comment-to-core (comment)
+    (when (= 61 (differential-transaction-comment-linenumber comment))
+     (format t "~S~%" comment))
+    (forgerie-core:make-merge-request-change-comment
+     :line (differential-transaction-comment-linenumber comment)
+     :date (unix-to-universal-time (differential-transaction-comment-datecreated comment))
+     :file (map 'string #'code-char (differential-diff-filename (differential-transaction-comment-diff comment)))
+     :text (parse-comment (map 'string #'code-char (differential-transaction-comment-content comment)))
+     :author (convert-user-to-core (differential-transaction-comment-author comment))
+     :replies (mapcar #'convert-comment-to-core (differential-transaction-comment-replies comment)))))
+  (forgerie-core:make-merge-request-change
+   :change (convert-commit-to-core commit)
+   :comments (mapcar #'convert-comment-to-core (repository-commit-comments commit)))))
+
 (defun convert-differential-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "D~A" (differential-comment-id comment))
@@ -589,7 +702,7 @@
    (forgerie-core:make-branch
     :name (format nil "generated-differential-D~A-source" (differential-revision-id revision-def))
     :commit (convert-commit-to-core (car (repository-commit-parents (car (differential-revision-related-commits revision-def))))))
-   :changes (mapcar #'convert-commit-to-core (differential-revision-related-commits revision-def))
+   :changes (mapcar #'convert-change-to-core (differential-revision-related-commits revision-def))
    :notes (mapcar #'convert-differential-comment-to-core (differential-revision-comments revision-def)))))
 
 (defun convert-repository-to-core (repository-def)

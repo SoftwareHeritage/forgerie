@@ -1,5 +1,22 @@
 (in-package #:forgerie-core)
 
+(defstruct merge-request-change
+ ; A change can be a <commit> or a <patch> (from base)
+ change
+ ; A list of merge-request-change-comment, though there may be nested comments
+ comments)
+
+; For comments that are in the changes for the PRs
+(defstruct merge-request-change-comment
+ line
+ text
+ file
+ author
+ date
+ ; Replies are of type merge-request-change-comment, though the line number
+ ; doesn't matter
+ replies)
+
 (defstruct merge-request
  id
  vc-repository
@@ -19,10 +36,7 @@
  source-branch ; the base of the merge request
  target-branch ; the branch holding the changes for the merge
 
- ; Changes can be either a list of commits, or a list of patches (or both)
- ; which are applied after the branches are created
- ;
- ; These should be in the order they should be applied
+ ; Changes is a list of things to be applied.  Each is of the type merge-request-change
  changes
 
  ; All the comments

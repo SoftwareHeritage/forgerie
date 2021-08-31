@@ -33,5 +33,11 @@
   #:merge-request-source-branch #:merge-request-target-branch #:merge-request-changes #:merge-request-patch
   #:merge-request-type #:merge-request-notes #:merge-request-author #:merge-request-date
 
+  #:make-merge-request-change #:merge-request-change-change #:merge-request-change-comments
+
+  #:make-merge-request-change-comment #:merge-request-change-comment-line #:merge-request-change-comment-text
+  #:merge-request-change-comment-replies #:merge-request-change-comment-author #:merge-request-change-comment-file
+  #:merge-request-change-comment-date
+
   ; utils.lisp
   #:vc-repositories-with-primary-project #:git-cmd #:*debug*))

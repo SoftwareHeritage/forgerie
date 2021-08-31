@@ -223,8 +223,8 @@
        collection)))
      (setf moved-forward nil)
      (setf most-recent-error nil)
-     (map-with-note-mapping-catch (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
-     (map-with-note-mapping-catch #'create-snippet (getf data :snippets))
+     ;(map-with-note-mapping-catch (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
+     ;(map-with-note-mapping-catch #'create-snippet (getf data :snippets))
      (map-with-note-mapping-catch #'create-merge-request merge-requests)
      (when (and (not moved-forward) most-recent-error)
       (format t "We failed to move forward...., so skipping item ~A~%" most-recent-error)
@@ -356,6 +356,39 @@
   (ensure-directories-exist (format nil "~A~A/" *working-directory* (getf project :path)))
   (git-cmd project "clone" "-o" "gitlab" (getf project :ssh_url_to_repo) ".")))
 
+(defun create-change-comments (gl-mr change)
+ (let*
+  ((versions (get-request (format nil "/projects/~A/merge_requests/~A/versions" (getf gl-mr :project_id) (getf gl-mr :iid))))
+
+   ; This may not work!  We may have to figure out how to correlate version with this commit
+   (version-for-change (car versions)))
+
+  (mapcar
+   (lambda (comment)
+    (let
+     ((note-text (process-note-text (forgerie-core:merge-request-change-comment-text comment) (getf gl-mr :project_id))))
+     (when
+      (and note-text (not (zerop (length note-text))))
+    (post-request
+     (format nil "/projects/~A/merge_requests/~A/discussions" (getf gl-mr :project_id) (getf gl-mr :iid))
+     `(("position[position_type]" . "text")
+       ("position[base_sha]" . ,(getf version-for-change :base_commit_sha))
+       ("position[head_sha]" . ,(getf version-for-change :head_commit_sha))
+       ("position[start_sha]" . ,(getf version-for-change :start_commit_sha))
+       ;("position[line_range][start][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_131")
+       ;("position[line_range][start][type]" . "new")
+       ;("position[line_range][start][new_line]" . "131")
+       ;("position[line_range][end][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_134")
+       ;("position[line_range][end][type]" . "new")
+       ;("position[line_range][end][new_line]" . "134")
+       ("position[new_line]" . ,(princ-to-string (forgerie-core:merge-request-change-comment-line comment)))
+       ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
+       ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
+       ("body" . ,note-text)
+       ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
+     :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment))))))
+   (forgerie-core:merge-request-change-comments change))))
+
 (defun create-merge-request (mr)
  (single-project-check
   (forgerie-core:vc-repository-name (forgerie-core:merge-request-vc-repository mr))
@@ -370,6 +403,10 @@
      (when (not project)
       (error "Could not find project with name: ~A" project-name))
      (create-local-checkout project)
+     ; We do this first, because if this errors, we want to bomb out first without doing the work
+     ; to create all the branches and whatnot.  The other option would be to add a mapping for
+     ; the git work we need to do, but this seemed more elegant.
+     (process-note-text (forgerie-core:merge-request-description mr) (getf project :id))
      (when
       (not
        (zerop
@@ -389,16 +426,18 @@
      (git-cmd project "checkout"
       (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
      (mapcar
-      (lambda (commit)
-       (typecase commit
-        (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
-        (forgerie-core:patch
-         (let
-          ((patch-file (format nil "~A/working.patch" *working-directory*)))
-          (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
-           (princ (forgerie-core:patch-diff commit) str))
-          (git-cmd project "am" patch-file)
-          (delete-file patch-file)))))
+      (lambda (change)
+       (let
+        ((commit (forgerie-core:merge-request-change-change change)))
+        (typecase commit
+         (forgerie-core:commit (git-cmd project "merge" (forgerie-core:commit-sha commit)))
+         (forgerie-core:patch
+          (let
+           ((patch-file (format nil "~A/working.patch" *working-directory*)))
+           (with-open-file (str patch-file :direction :output :if-exists :supersede :if-does-not-exist :create)
+            (princ (forgerie-core:patch-diff commit) str))
+           (git-cmd project "am" patch-file)
+           (delete-file patch-file))))))
       (forgerie-core:merge-request-changes mr))
      (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
      (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
@@ -407,6 +446,7 @@
        (format nil "projects/~A/merge_requests" (getf project :id))
        `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
          ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+         ("description" . ,(process-note-text (forgerie-core:merge-request-description mr) (getf project :id)))
          ("title" . ,(forgerie-core:merge-request-title mr)))
        :sudo (forgerie-core:user-username (forgerie-core:merge-request-author mr)))))
    (let
@@ -417,6 +457,10 @@
     (mapcar
      (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
      (forgerie-core:merge-request-notes mr))
+    (mapcar
+     (lambda (change)
+      (create-change-comments gl-mr change))
+     (forgerie-core:merge-request-changes mr))
     (when (eql :closed (forgerie-core:merge-request-type mr))
      (put-request
       (format nil "projects/~A/merge_requests/~A" (getf project :id) (getf gl-mr :iid))
