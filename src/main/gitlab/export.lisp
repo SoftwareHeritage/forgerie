@@ -5,6 +5,7 @@
  ((mapping :initarg :mapping :reader unknown-note-mapping-mapping)))
 
 (defvar *note-mapping-skips* nil)
+(defvar *notes-mode* nil)
 
 (defun validate-vc-repositories (vc-repositories projects)
  (let
@@ -15,10 +16,13 @@
        ((repos-for-proj (forgerie-core:vc-repositories-with-primary-project proj vc-repositories)))
        (cond
         ((< 1 (length repos-for-proj))
-         (format *standard-output*
-          "Project ~A is the primary project in multiple repositories, and those repositories won't be included:~%~{ * ~A~%~}"
+         (forgerie-core:add-mapping-error
+          :gitlab-project-primary-in-multiple
           (forgerie-core:project-name proj)
-          (mapcar #'forgerie-core:vc-repository-name repos-for-proj))
+          (format nil
+           "Project ~A is the primary project in multiple repositories, and those repositories won't be included:~%~{ * ~A~%~}"
+           (forgerie-core:project-name proj)
+           (mapcar #'forgerie-core:vc-repository-name repos-for-proj)))
          nil)
         (proj))))
      projects)))
@@ -28,13 +32,20 @@
     (lambda (vcr)
      (cond
       ((cl-ppcre:scan "[,()/+]" (forgerie-core:vc-repository-name vcr))
-       (format *error-output* "VC Repository '~A' has an illegal name due to an illegal character, one of: ',()/+'.~%" (forgerie-core:vc-repository-name vcr)))
+       (forgerie-core:add-mapping-error
+        :gitlab-repository-has-illegal-name
+        (forgerie-core:vc-repository-name vcr)
+        (format nil "VC Repository '~A' has an illegal name due to an illegal character, one of: ',()/+'." (forgerie-core:vc-repository-name vcr))))
       ((cl-ppcre:scan "^ " (forgerie-core:vc-repository-name vcr))
-       (format *error-output* "VC Repository '~A' has an illegal name due to starting with a space.~%" (forgerie-core:vc-repository-name vcr)))
+       (forgerie-core:add-mapping-error
+        :gitlab-repository-has-illegal-name
+        (forgerie-core:vc-repository-name vcr)
+        (format nil "VC Repository '~A' has an illegal name due to starting with a space." (forgerie-core:vc-repository-name vcr))))
       ((not (forgerie-core:vc-repository-primary-projects vcr))
-       ; Note that this output is just for debugging purposes, it doesn't actually stop anything
-       ; from hapening
-       (format *error-output* "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr))
+       (forgerie-core:add-mapping-error
+        :gitlab-repository-has-no-projects
+        (forgerie-core:vc-repository-name vcr)
+        (format nil "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr)))
        vcr)
       ((not
         (remove-if-not
@@ -50,9 +61,12 @@
    (lambda (user)
     (cond
      ((< (length (forgerie-core:user-username user)) 2)
-      (format *error-output* "User '~A' (~{~A~^,~}) has too short of a username.  Skipping.~%"
+      (forgerie-core:add-mapping-error
+       :gitlab-username-too-short
        (forgerie-core:user-username user)
-       (mapcar #'forgerie-core:email-address (forgerie-core:user-emails user))))
+       (format nil "User '~A' (~{~A~^,~}) has too short of a username."
+        (forgerie-core:user-username user)
+        (mapcar #'forgerie-core:email-address (forgerie-core:user-emails user)))))
      (user)))
    users)))
 
@@ -79,14 +93,20 @@
      ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
      (cond
       ((not vc-repos)
-       (format *error-output* "Ticket with id ~A is not assignable to a repository, so assigning to default~%" (forgerie-core:ticket-id ticket))
+       (forgerie-core:add-mapping-error
+        :gitlab-ticket-assigned-to-default
+        (forgerie-core:ticket-id ticket)
+        (format nil "Ticket with id ~A is not assignable to a repository, so assigning to default" (forgerie-core:ticket-id ticket)))
        ticket)
       ((< 1 (length vc-repos))
-       (format *error-output*
-        "Ticket with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
+       (forgerie-core:add-mapping-error
+        :gitlab-ticket-assigned-to-multiple
         (forgerie-core:ticket-id ticket)
-        (mapcar #'forgerie-core:vc-repository-name vc-repos))
-       :multiple-assignable)
+        (format nil
+         "Ticket with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
+         (forgerie-core:ticket-id ticket)
+         (mapcar #'forgerie-core:vc-repository-name vc-repos)))
+       nil)
       (ticket))))
    tickets)))
 
@@ -97,7 +117,10 @@
    (lambda (mr)
     (if
      (not (find (forgerie-core:merge-request-vc-repository mr) vc-repositories :test #'equalp))
-     (format *error-output* "Merge Request with title ~A is not assignable to a repository~%" (forgerie-core:merge-request-title mr))
+     (forgerie-core:add-mapping-error
+      :gitlab-merge-request-not-assignable
+      (forgerie-core:merge-request-id mr)
+      (format nil "Merge Request with title ~A is not assignable to a repository~%" (forgerie-core:merge-request-title mr)))
      mr))
    merge-requests)))
 
@@ -195,41 +218,55 @@
  (add-ssh-key)
  (let*
   ((*note-mapping-skips* nil)
+   (*notes-mode* nil)
    (vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
-   (tickets (remove-if #'keywordp (validate-tickets (getf data :tickets) vc-repositories)))
+   (tickets (remove-if-not #'identity (validate-tickets (getf data :tickets) vc-repositories)))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
   (mapcar #'create-user (validate-users (getf data :users)))
   (mapcar #'create-project vc-repositories)
   (loop
    :with moved-forward := t
    :with completed := nil
-   :with most-recent-error := nil
+   :with first-error := nil
+   :with number-of-errors := 0
    :while moved-forward
    :do
    (flet
     ((map-with-note-mapping-catch (fn collection)
       (mapcar
        (lambda (item)
-        (when (not (find item completed :test #'equalp))
-         (handler-case
-          (progn
-           (funcall fn item)
-           (format t "We have moved forward on ~S~%" item)
-           (setf moved-forward t)
-           (setf completed (cons item completed)))
-          (unknown-note-mapping (e)
-           (setf most-recent-error (unknown-note-mapping-mapping e))
-           (format t "Ok, retrying due to error ~S~%" (unknown-note-mapping-mapping e))))))
+        (let
+         ((item-info
+           (list
+             (type-of item)
+             (typecase item
+              (forgerie-core:ticket (forgerie-core:ticket-id item))
+              (forgerie-core:merge-request (forgerie-core:merge-request-id item))
+              (forgerie-core:snippet (forgerie-core:snippet-id item))))))
+         (when (not (find item completed :test #'equalp))
+          (handler-case
+           (progn
+            (funcall fn item)
+            (setf moved-forward t)
+            (setf completed (cons item completed)))
+           (unknown-note-mapping (e)
+            (incf number-of-errors)
+            (when (not first-error) (setf first-error (unknown-note-mapping-mapping e))))))))
        collection)))
      (setf moved-forward nil)
-     (setf most-recent-error nil)
-     ;(map-with-note-mapping-catch (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
-     ;(map-with-note-mapping-catch #'create-snippet (getf data :snippets))
+     (setf first-error nil)
+     (setf number-of-errors 0)
+     (map-with-note-mapping-catch (lambda (ticket) (create-ticket ticket vc-repositories)) tickets)
+     (map-with-note-mapping-catch #'create-snippet (getf data :snippets))
      (map-with-note-mapping-catch #'create-merge-request merge-requests)
-     (when (and (not moved-forward) most-recent-error)
-      (format t "We failed to move forward...., so skipping item ~A~%" most-recent-error)
+     (when (and (not first-error) (not *notes-mode*))
+      (setf *notes-mode* t)
+      (setf completed nil)
+      (setf moved-forward t))
+     (when (and (not moved-forward) first-error)
+      (when forgerie-core:*debug* (format t "We failed to move forward...., so skipping item ~A~%" first-error))
       (setf moved-forward t)
-      (push most-recent-error *note-mapping-skips*))))))
+      (push first-error *note-mapping-skips*))))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
@@ -289,21 +326,23 @@
       ((mapped-item-p item :snippet) (handle-mapped-item item :snippet "$"))
       ((find item *note-mapping-skips* :test #'equalp)
        (caddr item))
+      (*notes-mode* (caddr item))
       (t (error (make-instance 'unknown-note-mapping :mapping item))))))
    note-text)))
 
 (defun create-note (project-id item-type item-id note)
- (let
-  ((note-text (process-note-text (forgerie-core:note-text note) project-id)))
-  (when
-   (not (cl-ppcre:scan "^\\s*$" note-text))
-   (when-unmapped-with-update (:note (forgerie-core:note-id note))
-    (post-request
-     (format nil "/~A~A/~A/notes"
-      (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
-    `(("body" . ,note-text)
-      ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
-     :sudo (forgerie-core:user-username (forgerie-core:note-author note)))))))
+ (when *notes-mode*
+  (let
+   ((note-text (process-note-text (forgerie-core:note-text note) project-id)))
+   (when
+    (not (cl-ppcre:scan "^\\s*$" note-text))
+    (when-unmapped-with-update (:note (forgerie-core:note-id note))
+     (post-request
+      (format nil "/~A~A/~A/notes"
+       (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
+     `(("body" . ,note-text)
+       ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
+      :sudo (forgerie-core:user-username (forgerie-core:note-author note))))))))
 
 (defun note-mapped (note)
  (find-mapped-item :find-mapped-item (forgerie-core:note-id note)))
@@ -326,7 +365,9 @@
          ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
        :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket)))))
    (when
-    (notevery #'identity (mapcar #'note-mapped (forgerie-core:ticket-notes ticket)))
+    (and
+     *notes-mode*
+     (notevery #'identity (mapcar #'note-mapped (forgerie-core:ticket-notes ticket))))
     (let
      ((gl-ticket (get-request (format nil "projects/~A/issues/~A" project-id (forgerie-core:ticket-id ticket)))))
      (mapcar
@@ -369,24 +410,32 @@
      ((note-text (process-note-text (forgerie-core:merge-request-change-comment-text comment) (getf gl-mr :project_id))))
      (when
       (and note-text (not (zerop (length note-text))))
-    (post-request
-     (format nil "/projects/~A/merge_requests/~A/discussions" (getf gl-mr :project_id) (getf gl-mr :iid))
-     `(("position[position_type]" . "text")
-       ("position[base_sha]" . ,(getf version-for-change :base_commit_sha))
-       ("position[head_sha]" . ,(getf version-for-change :head_commit_sha))
-       ("position[start_sha]" . ,(getf version-for-change :start_commit_sha))
-       ;("position[line_range][start][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_131")
-       ;("position[line_range][start][type]" . "new")
-       ;("position[line_range][start][new_line]" . "131")
-       ;("position[line_range][end][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_134")
-       ;("position[line_range][end][type]" . "new")
-       ;("position[line_range][end][new_line]" . "134")
-       ("position[new_line]" . ,(princ-to-string (forgerie-core:merge-request-change-comment-line comment)))
-       ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
-       ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
-       ("body" . ,note-text)
-       ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
-     :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment))))))
+      (handler-case
+       (post-request
+        (format nil "/projects/~A/merge_requests/~A/discussions" (getf gl-mr :project_id) (getf gl-mr :iid))
+        `(("position[position_type]" . "text")
+          ("position[base_sha]" . ,(getf version-for-change :base_commit_sha))
+          ("position[head_sha]" . ,(getf version-for-change :head_commit_sha))
+          ("position[start_sha]" . ,(getf version-for-change :start_commit_sha))
+          ;("position[line_range][start][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_131")
+          ;("position[line_range][start][type]" . "new")
+          ;("position[line_range][start][new_line]" . "131")
+          ;("position[line_range][end][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_134")
+          ;("position[line_range][end][type]" . "new")
+          ;("position[line_range][end][new_line]" . "134")
+          ("position[new_line]" . ,(princ-to-string (forgerie-core:merge-request-change-comment-line comment)))
+          ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
+          ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
+          ("body" . ,note-text)
+          ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
+        :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment)))
+       (http-error (e)
+        (cond
+         ((= 400 (http-error-code e))
+          (format *standard-output* "400 error in create-change-comments: ~A" (http-error-resp e)))
+         ((= 500 (http-error-code e))
+          (format *standard-output* "500 error in create-change-comments: ~A" (http-error-resp e)))
+         (error e)))))))
    (forgerie-core:merge-request-change-comments change))))
 
 (defun create-merge-request (mr)
@@ -449,25 +498,26 @@
          ("description" . ,(process-note-text (forgerie-core:merge-request-description mr) (getf project :id)))
          ("title" . ,(forgerie-core:merge-request-title mr)))
        :sudo (forgerie-core:user-username (forgerie-core:merge-request-author mr)))))
-   (let
-    ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
-    (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
-    (rails-command (format nil "mr.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
-    (rails-command "mr.save")
-    (mapcar
-     (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
-     (forgerie-core:merge-request-notes mr))
-    (mapcar
-     (lambda (change)
-      (create-change-comments gl-mr change))
-     (forgerie-core:merge-request-changes mr))
-    (when (eql :closed (forgerie-core:merge-request-type mr))
-     (put-request
-      (format nil "projects/~A/merge_requests/~A" (getf project :id) (getf gl-mr :iid))
-      '(("state_event" . "close")))
-     (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-     (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
-    (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr))))))))
+   (when *notes-mode*
+    (let
+     ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
+     (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
+     (rails-command (format nil "mr.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
+     (rails-command "mr.save")
+     (mapcar
+      (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
+      (forgerie-core:merge-request-notes mr))
+     (mapcar
+      (lambda (change)
+       (create-change-comments gl-mr change))
+      (forgerie-core:merge-request-changes mr))
+     (when (eql :closed (forgerie-core:merge-request-type mr))
+      (put-request
+       (format nil "projects/~A/merge_requests/~A" (getf project :id) (getf gl-mr :iid))
+       '(("state_event" . "close")))
+      (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+      (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
+     (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr)))))))))
 
 (defun create-snippet (snippet)
  (single-project-check (getf *default-project* :name)
@@ -480,7 +530,10 @@
      (file (first (forgerie-core:snippet-files snippet))))
     (if
      (zerop (length (forgerie-core:file-data file)))
-     (format *error-output* "Skipping snippet ~A because empty content" (forgerie-core:snippet-id snippet))
+     (forgerie-core:add-mapping-error
+      :gitlab-snippet-empty
+      (forgerie-core:snippet-id snippet)
+      (format nil "Skipping snippet ~A because empty content" (forgerie-core:snippet-id snippet)))
      (progn
       (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
        (handler-case
@@ -496,7 +549,12 @@
            ("content" . ,(forgerie-core:file-data file))
            ("visibility" . "public")
            ("file_name" . ,(forgerie-core:file-name file)))))
-        (error (e) (format *error-output* "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e))))
+        (error (e)
+         (forgerie-core:add-mapping-error
+          :gitlab-snippet-error
+          (forgerie-core:snippet-id snippet)
+          (format nil "Failed to create snippet with title ~A, due to error ~A" (forgerie-core:snippet-title snippet) e)))))
+      (when *notes-mode*
        (let
         ((gl-snippet (retrieve-mapping :snippet (forgerie-core:snippet-id snippet))))
         (list
@@ -508,4 +566,4 @@
         (rails-command (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (forgerie-core:snippet-author snippet))))
         (rails-command "s.author = u")
         (rails-command "s.save")
-        (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))))
+        (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet)))))))))

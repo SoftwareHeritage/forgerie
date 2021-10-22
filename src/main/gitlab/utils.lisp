@@ -1,5 +1,13 @@
 (in-package #:forgerie-gitlab)
 
+(define-condition http-error
+ nil
+ ((code :initarg :code :reader http-error-code)
+  (path :initarg :path :reader http-error-path)
+  (method :initarg :method :reader http-error-method)
+  (parameters :initarg :parameters :reader http-error-parameters)
+  (resp :initarg :resp :reader http-error-resp)))
+
 (defun convert-js-to-plist (jsown)
  (cond
   ((not (listp jsown)) jsown)
@@ -36,12 +44,14 @@
       code
       resp))
     (when (not (<= 200 code 299))
-     (error "Got a non-2XX code ~A when doing request ~S (~A) with parameters ~S.~%Response: ~S"
-      code
-      path
-      method
-      parameters
-      resp))
+     (error
+      (make-instance
+       'http-error
+       :code code
+       :path path
+       :method method
+       :parameters parameters
+       :resp resp)))
     resp))))
 
 (defun git-cmd (project cmd &rest args)
@@ -160,7 +170,7 @@
   (format (sb-ext:process-input *rails-connection*) "0~%" cmd)
   (force-output (sb-ext:process-input *rails-connection*))
   (loop for line = (read-line (sb-ext:process-output *rails-connection*))
-        do (format t "Booting: ~A~%" line)
+        do (when forgerie-core:*debug* (format t "Booting: ~A~%" line))
         until (string= line "0")))
  ; The reason we append a 0 on the end of this, is because irb does some funky
  ; things, expecting you to be running from a terminal with a tty.  So just

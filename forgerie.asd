@@ -18,6 +18,7 @@
       (:file "merge-request")
       (:file "snippet")
       (:file "utils")
+      (:file "errors")
       (:file "run")))
     (:module "phabricator"
      :components

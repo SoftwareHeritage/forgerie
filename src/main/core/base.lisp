@@ -1,5 +1,7 @@
 (in-package #:forgerie-core)
 
+(defvar *working-directory* nil)
+
 (defgeneric import-forge (forge))
 (defgeneric export-forge (forge data))
 

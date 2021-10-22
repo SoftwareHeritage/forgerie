@@ -9,6 +9,4 @@
 
 (setf drakma:*drakma-default-external-format* 'UTF-8)
 
-(let
- ((forgerie-core:*debug* t))
- (forgerie-core:run :phabricator :gitlab))
+(forgerie-core:run :phabricator :gitlab)

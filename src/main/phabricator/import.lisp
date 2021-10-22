@@ -608,7 +608,7 @@
       (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
    (remove-if
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
-    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision where id = 5926")))))
+    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision")))))
 
 (defun parse-comment (comment)
  (labels
