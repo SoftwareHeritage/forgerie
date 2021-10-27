@@ -153,6 +153,10 @@
         "select * from phabricator_repository.edge where src = '~A' and dst like 'PHID-PROJ%'"
         (repository-phid repo)))))))
   (append
+   (let
+    ((override (find (repository-id repo) *repository-overrides* :key (lambda (override) (getf override :key)))))
+    (when (and override (eql :update (getf override :action)))
+     (getf override :data)))
    repo
    (list :primary-projects
     (append
