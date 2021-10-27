@@ -6,6 +6,7 @@
 
 (defvar *note-mapping-skips* nil)
 (defvar *notes-mode* nil)
+(defvar *files-to-upload* nil)
 
 (defun validate-vc-repositories (vc-repositories projects)
  (let
@@ -219,6 +220,7 @@
  (let*
   ((*note-mapping-skips* nil)
    (*notes-mode* nil)
+   (*files-to-upload* (getf data :files))
    (vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
    (tickets (remove-if-not #'identity (validate-tickets (getf data :tickets) vc-repositories)))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
@@ -318,9 +320,14 @@
          (format nil "~A~A (was ~A)" c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item))
          (let
           ((other-project (find-project-by-id (mapped-item-project-id mi))))
-          (format nil "~A~A~A (was ~A)" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item)))))))
+          (format nil "~A~A~A (was ~A)" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item))))))
+      (handle-file (file-id)
+       (let
+        ((file-response (create-file file-id project-id)))
+        (getf file-response :markdown))))
      (cond
       ((stringp item) item)
+      ((eql (car item) :file) (handle-file (cadr item)))
       ((mapped-item-p item :ticket) (handle-mapped-item item :ticket "#"))
       ((mapped-item-p item :merge-request) (handle-mapped-item item :merge-request "!"))
       ((mapped-item-p item :snippet) (handle-mapped-item item :snippet "$"))
@@ -343,6 +350,19 @@
      `(("body" . ,note-text)
        ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
       :sudo (forgerie-core:user-username (forgerie-core:note-author note))))))))
+
+(defun create-file (file-id project-id)
+ (let
+  ((file (find (parse-integer file-id) *files-to-upload* :key #'forgerie-core:file-id)))
+  (when (not file)
+   (error (format nil "Couldn't find file to upload with id ~S" (parse-integer file-id))))
+  (when-unmapped (:file-upoaded (forgerie-core:file-id file))
+   (update-file-mapping (:file-upoaded (forgerie-core:file-id file))
+    (flexi-streams:with-input-from-sequence (str (forgerie-core:file-data file))
+     (post-request
+      (format nil "projects/~A/uploads" project-id)
+      `(("file" . ,(list str :filename (forgerie-core:file-name file))))))))
+  (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
 
 (defun note-mapped (note)
  (find-mapped-item :find-mapped-item (forgerie-core:note-id note)))

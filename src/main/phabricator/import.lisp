@@ -13,7 +13,7 @@
 (getf-convenience differential-diff id)
 (getf-convenience edge dst)
 (getf-convenience email address isprimary)
-(getf-convenience file storageengine storageformat storagehandle name data)
+(getf-convenience file id storageengine storageformat storagehandle name data mimetype bytesize)
 (getf-convenience file-storageblob data)
 (getf-convenience paste id phid title filephid file comments author authorphid)
 (getf-convenience paste-comment id author authorphid content datecreated)
@@ -210,7 +210,7 @@
   ((file
     (first
      (query
-      (format nil "select name, storageEngine, storageFormat, storageHandle from phabricator_file.file where phid = '~A'"
+      (format nil "select id, name, storageEngine, storageFormat, storageHandle, mimetype, bytesize from phabricator_file.file where phid = '~A'"
        file-phid)))))
   (append
    file
@@ -219,19 +219,56 @@
     (cond
      ((and
        (string= "blob" (file-storageengine file))
-       (string= "raw" (file-storageformat file)))
+       (string= "raw" (file-storageformat file))
+       (string= "text/plain; charset=utf-8" (file-mimetype file)))
       (map 'string #'code-char
        (file-storageblob-data
         (first
          (query
           (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
            (file-storagehandle file)))))))
+      ((and
+        (string= "blob" (file-storageengine file))
+        (string= "raw" (file-storageformat file))
+        (string= "image/png" (file-mimetype file)))
+      (file-storageblob-data
+       (first
+        (query
+         (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
+          (file-storagehandle file))))))
+      ((and
+        (string= "local-disk" (file-storageengine file))
+        (string= "raw" (file-storageformat file))
+        (string= "image/png" (file-mimetype file)))
+       (with-open-file (str (format nil "~A/~A" *storage-location* (file-storagehandle file)) :element-type 'unsigned-byte)
+        (let
+         ((data (make-array (file-bytesize file))))
+         (read-sequence data str)
+         data)))
      (t
       (error
-       "Don't know how to handle files of with engine/format of ~A/~A encounted on ~A"
+       "Don't know how to handle files of with engine,format,mimetype of ~A,~A,~A encounted on ~A"
        (file-storageengine file)
        (file-storageformat file)
+       (file-mimetype file)
        file-phid)))))))
+
+(defvar *captured-files* nil)
+
+(defun capture-file (id)
+ (setf
+  *captured-files*
+  (remove-duplicates
+   (cons id *captured-files*)
+   :test #'string=)))
+
+(defun get-captured-files ()
+ (mapcar
+  #'get-file
+  (mapcar
+   (lambda (file-id)
+    (getf (first (query (format nil "select phid from phabricator_file.file where id = ~A" file-id))) :phid))
+   *captured-files*)))
 
 (defun add-author-to-paste-comment (comment)
  (append
@@ -266,7 +303,7 @@
      (let
       ; ignore-errors here is due to the nature of the data we're working with,
       ; and should probably get removed later on
-      ((file (ignore-errors (get-file (paste-filephid paste)))))
+      ((file (get-file (paste-filephid paste))))
       (when file (append (list :file file) paste))))
     (remove-if
      (lambda (paste) (find (paste-id paste) *pastes-to-skip*))
@@ -630,11 +667,15 @@
       (sort
        (remove-if-not #'identity
         (list
+         (first-instance-of "\{F(\\d+)\}" :file)
          (first-instance-of "T(\\d+)" :ticket)
          (first-instance-of "P(\\d+)" :snippet)
          (first-instance-of "D(\\d+)" :merge-request)))
        #'<
        :key #'car))))
+   (when
+    (and first-instance (equal :file (third first-instance)))
+    (capture-file (fourth first-instance)))
    (cond
     ((zerop (length comment)) nil)
     ((not first-instance) (list comment))
@@ -764,6 +805,7 @@
 
 (defun convert-file-to-core (file-def)
  (forgerie-core:make-file
+  :id (file-id file-def)
   :name (file-name file-def)
   :data (file-data file-def)))
 
@@ -783,4 +825,5 @@
   :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)))
   :snippets (cached "everything" "snippets" (mapcar #'convert-paste-to-core (get-pastes)))
   :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)))
-  :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)))))
+  :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)))
+  :files (cached "everything" "files" (mapcar #'convert-file-to-core (get-captured-files)))))

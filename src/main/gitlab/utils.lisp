@@ -6,7 +6,11 @@
   (path :initarg :path :reader http-error-path)
   (method :initarg :method :reader http-error-method)
   (parameters :initarg :parameters :reader http-error-parameters)
-  (resp :initarg :resp :reader http-error-resp)))
+  (resp :initarg :resp :reader http-error-resp))
+ (:report
+  (lambda
+   (condition stream)
+   (format stream "Http error resp: ~A" (http-error-resp condition)))))
 
 (defun convert-js-to-plist (jsown)
  (cond
@@ -26,14 +30,15 @@
 (defun make-request (path method parameters &key sudo)
  (let
   ((parameters
-    (cons
-     (cons "private_token" *private-token*)
+    ;(cons
+     ;(cons "private_token" *private-token*)
      (append
       (when sudo (list (cons "sudo" sudo)))
-      parameters))))
+      parameters)))
   (multiple-value-bind
    (body code headers uri stream must-close reason-phrase)
-   (drakma:http-request (format nil "~A/api/v4/~A" *server-address* path) :method method :parameters parameters)
+   (drakma:http-request (format nil "~A/api/v4/~A" *server-address* path) :method method :parameters parameters
+    :additional-headers (list (cons "PRIVATE-TOKEN" *private-token*)))
    (let
     ((resp (convert-js-to-plist (jsown:parse (map 'string #'code-char body)))))
     (when forgerie-core:*debug*
@@ -51,7 +56,8 @@
        :path path
        :method method
        :parameters parameters
-       :resp resp)))
+       :resp resp
+       )))
     resp))))
 
 (defun git-cmd (project cmd &rest args)
@@ -79,6 +85,7 @@
   (format nil "~A-~2,,,'0@A-~2,,,'0@AT~2,,,'0@A:~2,,,'0@A:~2,,,'0@AZ" year month date hr min sec)))
 
 (defstruct mapped-item type original-id id iid project-id)
+(defstruct mapped-file type original-id response)
 
 (defun mapping-file ()
  (format nil "~A/mapping" *working-directory*))
@@ -96,9 +103,9 @@
   (mapping)
   :key
   (lambda (mi)
-   (list
-    (mapped-item-type mi)
-    (mapped-item-original-id mi)))
+   (typecase mi
+    (mapped-item (list (mapped-item-type mi) (mapped-item-original-id mi)))
+    (mapped-file (list (mapped-file-type mi) (mapped-file-original-id mi)))))
   :test #'equalp))
 
 (defmacro when-unmapped ((type original-id) &rest body)
@@ -129,23 +136,44 @@
     (format ,str "~S" (mapping)))
    ,result)))
 
+(defmacro update-file-mapping ((type original-id) &rest body)
+ (let
+  ((result (gensym))
+   (str (gensym)))
+ `(let
+   ((,result ,@body))
+   (setf
+    *mapping*
+    (cons
+     (make-mapped-file
+      :type ,type
+      :original-id ,original-id
+      :response ,result)
+     (mapping)))
+   (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
+    (format ,str "~S" (mapping)))
+   ,result)))
+
 (defun retrieve-mapping (type original-id)
  (let
   ((mi (find-mapped-item type original-id)))
-  (if mi
-   (get-request
-    (format
-     nil
-     "projects/~A/~A/~A"
-     (mapped-item-project-id mi)
-     (case (mapped-item-type mi)
-      (:snippet "snippets")
-      (:merge-request "merge_requests")
-      (:ticket "issues"))
-     (or
-      (mapped-item-iid mi)
-      (mapped-item-id mi))))
-   (error "Failed to retrieve mapping for ~S" (list type original-id)))))
+  (when (not mi)
+   (error "Failed to retrieve mapping for ~S" (list type original-id)))
+  (typecase mi
+   (mapped-item
+    (get-request
+     (format
+      nil
+      "projects/~A/~A/~A"
+      (mapped-item-project-id mi)
+      (case (mapped-item-type mi)
+       (:snippet "snippets")
+       (:merge-request "merge_requests")
+       (:ticket "issues"))
+      (or
+       (mapped-item-iid mi)
+       (mapped-item-id mi)))))
+    (mapped-file (mapped-file-response mi)))))
 
 ; This is for development, so that we can export only one project
 ; and all the tickets/prs associated with it.

@@ -6,7 +6,7 @@
   ; base.lisp
   #:*working-directory*
   #:import-forge #:export-forge
-  #:make-file #:file-name #:file-data
+  #:make-file #:file-id #:file-name #:file-data
   #:make-commit #:commit-sha #:commit
   #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit

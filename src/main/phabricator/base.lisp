@@ -17,6 +17,9 @@
 ; This is the http location of the phabricator server
 (defvar *phabricator-location* nil)
 
+; The local filesystem storage location
+(defvar *storage-location* nil)
+
 (defvar *working-directory* "/tmp/forgerie/phabricator")
 
 ; A list of plists, each having the keys :key and :repository
