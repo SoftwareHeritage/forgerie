@@ -120,6 +120,7 @@
         from phabricator_maniphest.maniphest_transaction mt
         left join phabricator_maniphest.maniphest_transaction_comment mtc on mtc.phid = mt.commentphid
         where commentphid is not null and
+            mtc.isdeleted = 0 and
             objectphid = '~A' and
             transactiontype = 'core:comment' order by mt.datecreated"
     (task-phid task)))))
@@ -291,6 +292,7 @@
         from phabricator_paste.paste_transaction pt
         left join phabricator_paste.paste_transaction_comment ptc on ptc.phid = pt.commentphid
         where commentphid is not null and
+            ptc.isdeleted = 0 and
             objectphid = '~A' and
             transactiontype = 'core:comment' order by pt.datecreated"
     (paste-phid paste)))))
@@ -521,6 +523,7 @@
         from phabricator_differential.differential_transaction rt
         left join phabricator_differential.differential_transaction_comment rtc on rtc.phid = rt.commentphid
         where commentphid is not null and
+            rtc.isdeleted = 0 and
             objectphid = '~A' and
             transactiontype = 'core:comment' order by rt.datecreated"
     (differential-revision-phid rev)))))
@@ -531,7 +534,7 @@
    (comments
     (query
      (format nil
-      "select * from phabricator_differential.differential_transaction_comment where revisionphid = '~A'" phid))))
+      "select * from phabricator_differential.differential_transaction_comment where revisionphid = '~A' and isdeleted = 0" phid))))
   (mapcar
    (lambda (comment)
     (append
