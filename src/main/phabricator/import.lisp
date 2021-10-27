@@ -234,7 +234,9 @@
       ((and
         (string= "blob" (file-storageengine file))
         (string= "raw" (file-storageformat file))
-        (string= "image/png" (file-mimetype file)))
+        (or
+         (string= "image/png" (file-mimetype file))
+         (string= "image/svg+xml" (file-mimetype file))))
       (file-storageblob-data
        (first
         (query
