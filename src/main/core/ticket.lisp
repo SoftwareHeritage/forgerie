@@ -4,6 +4,7 @@
  id
  title
  author
+ assignee
  description
  projects
 

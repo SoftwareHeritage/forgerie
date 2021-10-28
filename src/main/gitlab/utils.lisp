@@ -161,18 +161,26 @@
    (error "Failed to retrieve mapping for ~S" (list type original-id)))
   (typecase mi
    (mapped-item
-    (get-request
-     (format
-      nil
-      "projects/~A/~A/~A"
-      (mapped-item-project-id mi)
-      (case (mapped-item-type mi)
-       (:snippet "snippets")
-       (:merge-request "merge_requests")
-       (:ticket "issues"))
-      (or
-       (mapped-item-iid mi)
-       (mapped-item-id mi)))))
+    (if (mapped-item-project-id mi)
+     (get-request
+      (format
+       nil
+       "projects/~A/~A/~A"
+       (mapped-item-project-id mi)
+       (case (mapped-item-type mi)
+        (:snippet "snippets")
+        (:merge-request "merge_requests")
+        (:ticket "issues"))
+       (or
+        (mapped-item-iid mi)
+        (mapped-item-id mi))))
+     (get-request
+      (format nil "~A/~A"
+       (case (mapped-item-type mi)
+        (:user "users"))
+       (or
+        (mapped-item-iid mi)
+        (mapped-item-id mi))))))
     (mapped-file (mapped-file-response mi)))))
 
 ; This is for development, so that we can export only one project

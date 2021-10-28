@@ -21,7 +21,7 @@
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments)
-(getf-convenience task id phid title status projects comments owner ownerphid description datecreated priority)
+(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority)
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
@@ -130,6 +130,7 @@
   task
   (list
    :owner (when (task-ownerphid task) (get-user (task-ownerphid task)))
+   :author (when (task-authorphid task) (get-user (task-authorphid task)))
    :comments (get-task-comments task))
   (list
    :projects
@@ -779,10 +780,11 @@
   :is-primary (eql (email-isprimary email-def) 1)))
 
 (defun convert-user-to-core (user-def)
- (forgerie-core:make-user
-  :username (user-username user-def)
-  :name (user-realname user-def)
-  :emails (mapcar #'convert-email-to-core (user-emails user-def))))
+ (when user-def
+  (forgerie-core:make-user
+   :username (user-username user-def)
+   :name (user-realname user-def)
+   :emails (mapcar #'convert-email-to-core (user-emails user-def)))))
 
 (defun convert-task-comment-to-core (comment)
  (forgerie-core:make-note
@@ -803,7 +805,8 @@
   (forgerie-core:make-ticket
    :id (task-id task-def)
    :title (task-title task-def)
-   :author (convert-user-to-core (task-owner task-def))
+   :author (convert-user-to-core (task-author task-def))
+   :assignee (convert-user-to-core (task-owner task-def))
    :description (parse-comment (map 'string #'code-char (task-description task-def)))
    :projects (mapcar #'convert-project-to-core (task-projects task-def))
    :date (unix-to-universal-time (task-datecreated task-def))
