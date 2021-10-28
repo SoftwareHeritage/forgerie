@@ -431,31 +431,47 @@
      (when
       (and note-text (not (zerop (length note-text))))
       (handler-case
-       (post-request
-        (format nil "/projects/~A/merge_requests/~A/discussions" (getf gl-mr :project_id) (getf gl-mr :iid))
-        `(("position[position_type]" . "text")
-          ("position[base_sha]" . ,(getf version-for-change :base_commit_sha))
-          ("position[head_sha]" . ,(getf version-for-change :head_commit_sha))
-          ("position[start_sha]" . ,(getf version-for-change :start_commit_sha))
-          ;("position[line_range][start][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_131")
-          ;("position[line_range][start][type]" . "new")
-          ;("position[line_range][start][new_line]" . "131")
-          ;("position[line_range][end][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_134")
-          ;("position[line_range][end][type]" . "new")
-          ;("position[line_range][end][new_line]" . "134")
-          ("position[new_line]" . ,(princ-to-string (forgerie-core:merge-request-change-comment-line comment)))
-          ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
-          ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
-          ("body" . ,note-text)
-          ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
-        :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment)))
+       (let
+        ((discussion
+          (post-request
+           (format nil "/projects/~A/merge_requests/~A/discussions" (getf gl-mr :project_id) (getf gl-mr :iid))
+           `(("position[position_type]" . "text")
+             ("position[base_sha]" . ,(getf version-for-change :base_commit_sha))
+             ("position[head_sha]" . ,(getf version-for-change :head_commit_sha))
+             ("position[start_sha]" . ,(getf version-for-change :start_commit_sha))
+             ;("position[line_range][start][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_131")
+             ;("position[line_range][start][type]" . "new")
+             ;("position[line_range][start][new_line]" . "131")
+             ;("position[line_range][end][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_134")
+             ;("position[line_range][end][type]" . "new")
+             ;("position[line_range][end][new_line]" . "134")
+             ("position[new_line]" . ,(princ-to-string (forgerie-core:merge-request-change-comment-line comment)))
+             ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
+             ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
+             ("body" . ,note-text)
+             ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
+           :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment)))))
+        (when (forgerie-core:merge-request-change-comment-replies comment)
+         (format t "---------------------~%~S~%---------------------~%" discussion))
+        (mapcar
+         (lambda (comment)
+          (let
+           ((note-text (process-note-text (forgerie-core:merge-request-change-comment-text comment) (getf gl-mr :project_id))))
+           (when
+            (and note-text (not (zerop (length note-text))))
+            (post-request
+             (format nil "/projects/~A/merge_requests/~A/discussions/~A/notes" (getf gl-mr :project_id) (getf gl-mr :iid) (getf discussion :id))
+             `(("body" . ,note-text)
+               ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
+             :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment))))))
+         (forgerie-core:merge-request-change-comment-replies comment)))
        (http-error (e)
         (cond
          ((= 400 (http-error-code e))
           (format *standard-output* "400 error in create-change-comments: ~A" (http-error-resp e)))
          ((= 500 (http-error-code e))
           (format *standard-output* "500 error in create-change-comments: ~A" (http-error-resp e)))
-         (error e)))))))
+         (t (error e))))))))
    (forgerie-core:merge-request-change-comments change))))
 
 (defun create-merge-request (mr)
