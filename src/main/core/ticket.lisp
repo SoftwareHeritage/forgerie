@@ -13,4 +13,5 @@
  type
 
  date
- notes)
+ notes
+ priority)

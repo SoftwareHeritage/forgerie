@@ -381,6 +381,7 @@
        (format nil "projects/~A/issues" project-id)
        `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
          ("title" . ,(forgerie-core:ticket-title ticket))
+         ("labels" . ,(format nil "priority:~A" (forgerie-core:ticket-priority ticket)))
          ("description" . ,(process-note-text (forgerie-core:ticket-description ticket) project-id))
          ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
        :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket)))))
