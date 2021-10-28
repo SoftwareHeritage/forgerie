@@ -25,7 +25,7 @@
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
- id title summary phid status repository repositoryphid datecreated related-commits author authorphid comments)
+ id title summary testplan phid status repository repositoryphid datecreated related-commits author authorphid comments)
 (getf-convenience differential-transaction-comment
  phid content changesetid isnewfile linenumber linelength replytocommentphid diff replies author authorphid datecreated)
 (getf-convenience differential-diff sourcecontrolbaserevision filename)
@@ -654,7 +654,7 @@
       (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
    (remove-if
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
-    (query "select id, title, summary, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision")))))
+    (query "select id, title, summary, testplan, phid, status, repositoryphid, datecreated, authorphid from phabricator_differential.differential_revision")))))
 
 (defun parse-comment (comment)
  (labels
@@ -737,7 +737,12 @@
   (forgerie-core:make-merge-request
    :id (differential-revision-id revision-def)
    :title (differential-revision-title revision-def)
-   :description (parse-comment (map 'string #'code-char (differential-revision-summary revision-def)))
+   :description
+   (parse-comment
+    (format nil "~A~A"
+     (map 'string #'code-char (differential-revision-summary revision-def))
+     (when (differential-revision-testplan revision-def)
+      (format nil "~%Test Plan~%~%~A" (map 'string #'code-char (differential-revision-testplan revision-def))))))
    :author (convert-user-to-core (differential-revision-author revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
    :date (unix-to-universal-time (differential-revision-datecreated revision-def))
