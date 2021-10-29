@@ -18,4 +18,5 @@
  notes
  priority
 
- linked-tickets)
+ linked-tickets
+ subscribers)

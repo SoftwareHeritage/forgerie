@@ -377,22 +377,31 @@
    (let
     ((project-id (getf (project-for-ticket ticket vc-repositories) :id)))
     (when-unmapped (:ticket (forgerie-core:ticket-id ticket))
-     (update-mapping (:ticket (forgerie-core:ticket-id ticket))
-      (post-request
-       (format nil "projects/~A/issues" project-id)
-       `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
-         ("title" . ,(forgerie-core:ticket-title ticket))
-         ("labels" .
-          ,(format nil "~{~A~^,~}"
-            (cons
-             (format nil "priority:~A" (forgerie-core:ticket-priority ticket))
-             (mapcar #'forgerie-core:project-name (forgerie-core:ticket-projects ticket)))))
-       ,@(when (forgerie-core:ticket-assignee ticket)
-          (list (cons "assignee_id" (princ-to-string (getf (retrieve-mapping :user (forgerie-core:user-username (forgerie-core:ticket-assignee ticket))) :id)))))
-         ("confidential" . ,(if (forgerie-core:ticket-confidential ticket) "true" "false"))
-         ("description" . ,(process-note-text (forgerie-core:ticket-description ticket) project-id))
-         ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
-       :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket)))))
+     (let
+      ((gl-ticket
+        (post-request
+         (format nil "projects/~A/issues" project-id)
+         `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
+           ("title" . ,(forgerie-core:ticket-title ticket))
+           ("labels" .
+            ,(format nil "~{~A~^,~}"
+              (cons
+               (format nil "priority:~A" (forgerie-core:ticket-priority ticket))
+               (mapcar #'forgerie-core:project-name (forgerie-core:ticket-projects ticket)))))
+         ,@(when (forgerie-core:ticket-assignee ticket)
+            (list (cons "assignee_id" (princ-to-string (getf (retrieve-mapping :user (forgerie-core:user-username (forgerie-core:ticket-assignee ticket))) :id)))))
+           ("confidential" . ,(if (forgerie-core:ticket-confidential ticket) "true" "false"))
+           ("description" . ,(process-note-text (forgerie-core:ticket-description ticket) project-id))
+           ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
+         :sudo (forgerie-core:user-username (forgerie-core:ticket-author ticket)))))
+      (mapcar
+       (lambda (u)
+        (post-request
+         (format nil "projects/~A/issues/~A/subscribe" (getf gl-ticket :project_id) (getf gl-ticket :iid))
+         nil
+         :sudo (forgerie-core:user-username u)))
+       (forgerie-core:ticket-subscribers ticket))
+      (update-mapping (:ticket (forgerie-core:ticket-id ticket)) gl-ticket)))
    (when
     (and
      *notes-mode*
