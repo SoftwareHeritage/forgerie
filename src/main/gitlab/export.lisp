@@ -381,7 +381,11 @@
        (format nil "projects/~A/issues" project-id)
        `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
          ("title" . ,(forgerie-core:ticket-title ticket))
-         ("labels" . ,(format nil "priority:~A" (forgerie-core:ticket-priority ticket)))
+         ("labels" .
+          ,(format nil "~{~A~^,~}"
+            (cons
+             (format nil "priority:~A" (forgerie-core:ticket-priority ticket))
+             (mapcar #'forgerie-core:project-name (forgerie-core:ticket-projects ticket)))))
        ,@(when (forgerie-core:ticket-assignee ticket)
           (list (cons "assignee_id" (princ-to-string (getf (retrieve-mapping :user (forgerie-core:user-username (forgerie-core:ticket-assignee ticket))) :id)))))
          ("description" . ,(process-note-text (forgerie-core:ticket-description ticket) project-id))
