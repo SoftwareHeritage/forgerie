@@ -318,10 +318,10 @@
        (let
         ((mi (find-mapped-item type (parse-integer (cadr item)))))
         (if (equal project-id (mapped-item-project-id mi))
-         (format nil "~A~A (was ~A)" c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item))
+         (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
          (let
           ((other-project (find-project-by-id (mapped-item-project-id mi))))
-          (format nil "~A~A~A (was ~A)" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi)) (caddr item))))))
+          (format nil "~A~A~A" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi)))))))
       (handle-file (file-id)
        (let
         ((file-response (create-file file-id project-id)))
