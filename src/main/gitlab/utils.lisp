@@ -10,7 +10,7 @@
  (:report
   (lambda
    (condition stream)
-   (format stream "Http error resp: ~A" (http-error-resp condition)))))
+   (format stream "Http error code: ~A, resp: ~A" (http-error-code condition) (http-error-resp condition)))))
 
 (defun convert-js-to-plist (jsown)
  (cond
@@ -39,26 +39,28 @@
    (body code headers uri stream must-close reason-phrase)
    (drakma:http-request (format nil "~A/api/v4/~A" *server-address* path) :method method :parameters parameters
     :additional-headers (list (cons "PRIVATE-TOKEN" *private-token*)))
-   (let
-    ((resp (convert-js-to-plist (jsown:parse (map 'string #'code-char body)))))
-    (when forgerie-core:*debug*
-     (format t "*****************~%Gitlab request ~A (~A): ~S~%Status Code: ~S~%Response: ~S~%"
-      path
-      method
-      parameters
-      code
-      resp))
-    (when (not (<= 200 code 299))
-     (error
-      (make-instance
-       'http-error
-       :code code
-       :path path
-       :method method
-       :parameters parameters
-       :resp resp
-       )))
-    resp))))
+   (when
+    (not (= 304 code)) ; 304s are empty, and can be ignored
+    (let
+     ((resp (convert-js-to-plist (jsown:parse (map 'string #'code-char body)))))
+     (when forgerie-core:*debug*
+      (format t "*****************~%Gitlab request ~A (~A): ~S~%Status Code: ~S~%Response: ~S~%"
+       path
+       method
+       parameters
+       code
+       resp))
+     (when (not (<= 200 code 299))
+      (error
+       (make-instance
+        'http-error
+        :code code
+        :path path
+        :method method
+        :parameters parameters
+        :resp resp
+        )))
+     resp)))))
 
 (defun git-cmd (project cmd &rest args)
  (forgerie-core:git-cmd

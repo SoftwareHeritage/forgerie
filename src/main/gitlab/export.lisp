@@ -491,8 +491,6 @@
              ("body" . ,note-text)
              ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
            :sudo (forgerie-core:user-username (forgerie-core:merge-request-change-comment-author comment)))))
-        (when (forgerie-core:merge-request-change-comment-replies comment)
-         (format t "---------------------~%~S~%---------------------~%" discussion))
         (mapcar
          (lambda (comment)
           (let
