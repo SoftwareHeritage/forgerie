@@ -23,3 +23,7 @@
 ; boot the rails console.  Sometimes this is localhost.  Keys
 ; have to be set up.
 (defvar *rails-console-ssh-args* nil)
+
+; A funciton that takes a forgerie-core:merge-request and adds a string
+; that should be appended to the description of merge requests.
+(defvar *merge-request-suffix* nil)

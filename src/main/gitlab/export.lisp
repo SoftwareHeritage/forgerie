@@ -571,7 +571,7 @@
        (format nil "projects/~A/merge_requests" (getf project :id))
        `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
          ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-         ("description" . ,(process-note-text (forgerie-core:merge-request-description mr) (getf project :id)))
+         ("description" . ,(process-note-text (append (forgerie-core:merge-request-description mr) (list (merge-request-suffix mr))) (getf project :id)))
          ("title" . ,(forgerie-core:merge-request-title mr)))
        :sudo (forgerie-core:user-username (forgerie-core:merge-request-author mr)))))
    (when *notes-mode*
