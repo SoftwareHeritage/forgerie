@@ -442,15 +442,23 @@
 
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))
-  (post-request
-   "users"
-   `(("name" . ,(forgerie-core:user-name user))
-     ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
-     ; Everyone must be an admin to make some of the other import things work correctly
-     ; and then admin must be removed after
-     ("admin" . "true")
-     ("reset_password" . "true")
-     ("username" . ,(forgerie-core:user-username user))))))
+  (let
+   ((gl-user
+     (post-request
+      "users"
+      `(("name" . ,(forgerie-core:user-name user))
+        ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
+        ; Everyone must be an admin to make some of the other import things work correctly
+        ; and then admin must be removed after
+        ("admin" . "true")
+        ("reset_password" . "true")
+        ("username" . ,(forgerie-core:user-username user))))))
+   (mapcar
+    (lambda (email)
+     (post-request (format nil "/users/~A/emails" (getf gl-user :id))
+      `(("email" . ,(forgerie-core:email-address email)))))
+    (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
+   gl-user)))
 
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
