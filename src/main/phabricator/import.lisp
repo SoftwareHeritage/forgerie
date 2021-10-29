@@ -21,7 +21,7 @@
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments)
-(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid)
+(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks)
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
@@ -133,6 +133,15 @@
    :author (when (task-authorphid task) (get-user (task-authorphid task)))
    :comments (get-task-comments task))
   (list
+   :linked-tasks
+   (mapcar
+    (lambda (phid) (get-task phid :shallow t))
+    (mapcar #'edge-dst
+     (query
+      (format nil
+       "select dst from phabricator_maniphest.edge where src = '~A' and type = 3"
+       (task-phid task))))))
+  (list
    :projects
    (mapcar #'get-project
     (mapcar #'edge-dst
@@ -140,6 +149,11 @@
       (format nil
        "select dst from phabricator_maniphest.edge where src = '~A' and dst like 'PHID-PROJ%'"
        (task-phid task))))))))
+
+(defun get-task (phid &key shallow)
+ (let
+  ((task (first (query (format nil "select * from phabricator_maniphest.maniphest_task where phid = '~A'" phid)))))
+  (if shallow task (annotate-task task))))
 
 (defun get-tasks ()
  (mapcar #'annotate-task
@@ -811,6 +825,7 @@
    :projects (mapcar #'convert-project-to-core (task-projects task-def))
    :date (unix-to-universal-time (task-datecreated task-def))
    :confidential (not (not (find (task-spacephid task-def) *confidential-space-phids* :test #'string=)))
+   :linked-tickets (mapcar #'convert-task-to-core (task-linked-tasks task-def))
    :priority
    (case (task-priority task-def)
     (100 "Unbreak!")

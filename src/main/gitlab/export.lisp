@@ -268,7 +268,8 @@
      (when (and (not moved-forward) first-error)
       (when forgerie-core:*debug* (format t "We failed to move forward...., so skipping item ~A~%" first-error))
       (setf moved-forward t)
-      (push first-error *note-mapping-skips*))))))
+      (push first-error *note-mapping-skips*))))
+  (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
@@ -407,6 +408,28 @@
        (format nil "projects/~A/issues/~A" project-id (getf gl-ticket :iid))
        '(("state_event" . "close"))))
      (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket)))))))))
+
+(defun create-ticket-links (ticket vc-repositories)
+ (single-project-check
+  (let
+   ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
+   (if vc-repos (forgerie-core:vc-repository-name (car vc-repos)) (getf *default-project* :name)))
+  (let
+   ((gl-ticket (retrieve-mapping :ticket (forgerie-core:ticket-id ticket))))
+   (mapcar
+    (lambda (linked-ticket)
+     (let
+      ((gl-linked-ticket (ignore-errors (retrieve-mapping :ticket (forgerie-core:ticket-id linked-ticket)))))
+      (if (not gl-linked-ticket)
+       (forgerie-core:add-mapping-error
+        :linked-ticket-not-found
+        (forgerie-core:ticket-id linked-ticket)
+        (format nil "Link was between ~A and ~A" (forgerie-core:ticket-id ticket) (forgerie-core:ticket-id linked-ticket)))
+       (post-request
+        (format nil "projects/~A/issues/~A/links" (getf gl-ticket :project_id) (getf gl-ticket :iid))
+        `(("target_project_id" . ,(princ-to-string (getf gl-linked-ticket :project_id)))
+          ("target_issue_iid" . ,(princ-to-string (getf gl-linked-ticket :iid))))))))
+    (forgerie-core:ticket-linked-tickets ticket)))))
 
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))

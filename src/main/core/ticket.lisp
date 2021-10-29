@@ -16,4 +16,6 @@
 
  date
  notes
- priority)
+ priority
+
+ linked-tickets)
