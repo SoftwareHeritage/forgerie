@@ -756,8 +756,9 @@
    (parse-comment
     (format nil "~A~A"
      (map 'string #'code-char (differential-revision-summary revision-def))
-     (when (differential-revision-testplan revision-def)
-      (format nil "~%Test Plan~%~%~A" (map 'string #'code-char (differential-revision-testplan revision-def))))))
+     (if (differential-revision-testplan revision-def)
+      (format nil "~%Test Plan~%~%~A" (map 'string #'code-char (differential-revision-testplan revision-def)))
+      "")))
    :author (convert-user-to-core (differential-revision-author revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
    :date (unix-to-universal-time (differential-revision-datecreated revision-def))
