@@ -21,7 +21,7 @@
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments)
-(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority)
+(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid)
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails)
 (getf-convenience differential-revision
@@ -810,6 +810,7 @@
    :description (parse-comment (map 'string #'code-char (task-description task-def)))
    :projects (mapcar #'convert-project-to-core (task-projects task-def))
    :date (unix-to-universal-time (task-datecreated task-def))
+   :confidential (not (not (find (task-spacephid task-def) *confidential-space-phids* :test #'string=)))
    :priority
    (case (task-priority task-def)
     (100 "Unbreak!")

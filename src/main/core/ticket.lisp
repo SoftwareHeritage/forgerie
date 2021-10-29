@@ -7,6 +7,7 @@
  assignee
  description
  projects
+ confidential
 
  ; The type can be one of:
  ; - :open

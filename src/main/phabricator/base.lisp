@@ -27,3 +27,6 @@
 (defvar *project-assignment-overrides* nil)
 (defvar *repository-overrides* nil)
 (defvar *user-overrides* nil)
+
+; List of spaces for tasks that should be marked as confidential
+(defvar *confidential-space-phids* nil)
