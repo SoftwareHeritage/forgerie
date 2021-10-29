@@ -692,9 +692,9 @@
        (remove-if-not #'identity
         (list
          (first-instance-of "\{F(\\d+)\}" :file)
-         (first-instance-of "T(\\d+)" :ticket)
-         (first-instance-of "P(\\d+)" :snippet)
-         (first-instance-of "D(\\d+)" :merge-request)))
+         (first-instance-of "T(\\d+)(#\\d+)?" :ticket)
+         (first-instance-of "P(\\d+)(#\\d+)?" :snippet)
+         (first-instance-of "D(\\d+)(#\\d+)?" :merge-request)))
        #'<
        :key #'car))))
    (when
