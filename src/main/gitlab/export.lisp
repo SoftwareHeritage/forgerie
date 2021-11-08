@@ -269,7 +269,8 @@
       (when forgerie-core:*debug* (format t "We failed to move forward...., so skipping item ~A~%" first-error))
       (setf moved-forward t)
       (push first-error *note-mapping-skips*))))
-  (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)))
+  (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)
+  (mapcar #'update-user-admin-status (validate-users (getf data :users)))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
@@ -464,6 +465,15 @@
       `(("email" . ,(forgerie-core:email-address email)))))
     (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
    gl-user)))
+
+(defun update-user-admin-status (user)
+ (when-unmapped (:user-admin-set (forgerie-core:user-username user))
+  (let
+   ((gl-user (retrieve-mapping :user (forgerie-core:user-username user))))
+   (put-request
+    (format nil "/users/~A" (getf gl-user :id))
+    `(("admin" . ,(if (forgerie-core:user-admin user) "true" "false")))))
+  (update-mapping (:user-admin-set (forgerie-core:user-username user)))))
 
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))

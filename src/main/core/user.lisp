@@ -6,6 +6,7 @@
  username
  name
  emails ; there can be multiple
+ admin ; boolean for now
  )
 
 (defun user-primary-email (user)

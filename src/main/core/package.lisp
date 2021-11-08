@@ -14,6 +14,7 @@
 
   ; user.lisp
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
+  #:user-admin
 
   ; project.lisp
   #:make-project #:project-name #:project-tags

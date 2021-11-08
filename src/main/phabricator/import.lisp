@@ -23,7 +23,7 @@
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments)
 (getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers)
 (getf-convenience task-comment id author authorphid content datecreated)
-(getf-convenience user id username realname phid emails)
+(getf-convenience user id username realname phid emails isadmin)
 (getf-convenience differential-revision
  id title summary testplan phid status repository repositoryphid datecreated related-commits author authorphid comments)
 (getf-convenience differential-transaction-comment
@@ -83,11 +83,11 @@
 (defun get-user (phid)
  (annotate-user
   (first
-   (query (format nil "select id, username, realName, phid from phabricator_user.user where phid = '~A'" phid)))))
+   (query (format nil "select id, username, realName, phid, isadmin from phabricator_user.user where phid = '~A'" phid)))))
 
 (defun get-users ()
  (mapcar #'annotate-user
-  (query "select id, username, realName, phid from phabricator_user.user")))
+  (query "select id, username, realName, phid, isadmin from phabricator_user.user")))
 
 (defun fill-out-project (proj)
  (append
@@ -823,6 +823,7 @@
   (forgerie-core:make-user
    :username (user-username user-def)
    :name (user-realname user-def)
+   :admin (equal (user-isadmin user-def) 1)
    :emails (mapcar #'convert-email-to-core (user-emails user-def)))))
 
 (defun convert-task-comment-to-core (comment)
