@@ -250,33 +250,50 @@
      ((and
        (string= "blob" (file-storageengine file))
        (string= "raw" (file-storageformat file))
-       (string= "text/plain; charset=utf-8" (file-mimetype file)))
+       (cl-ppcre:scan "^text/" (file-mimetype file)))
       (map 'string #'code-char
        (file-storageblob-data
         (first
          (query
           (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
            (file-storagehandle file)))))))
-      ((and
-        (string= "blob" (file-storageengine file))
-        (string= "raw" (file-storageformat file))
-        (or
-         (string= "image/png" (file-mimetype file))
-         (string= "image/svg+xml" (file-mimetype file))))
-      (file-storageblob-data
-       (first
-        (query
-         (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
-          (file-storagehandle file))))))
-      ((and
-        (string= "local-disk" (file-storageengine file))
-        (string= "raw" (file-storageformat file))
-        (string= "image/png" (file-mimetype file)))
+     ((and
+       (string= "local-disk" (file-storageengine file))
+       (string= "raw" (file-storageformat file))
+       (cl-ppcre:scan "^text/" (file-mimetype file)))
+      (map 'string #'code-char
        (with-open-file (str (format nil "~A/~A" *storage-location* (file-storagehandle file)) :element-type 'unsigned-byte)
         (let
          ((data (make-array (file-bytesize file))))
          (read-sequence data str)
-         data)))
+         data))))
+     ((and
+       (string= "blob" (file-storageengine file))
+       (string= "raw" (file-storageformat file))
+       (or
+        (cl-ppcre:scan "^image" (file-mimetype file))
+        (cl-ppcre:scan "^video" (file-mimetype file))
+        (cl-ppcre:scan "^application/" (file-mimetype file))))
+     (file-storageblob-data
+      (first
+       (query
+        (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
+         (file-storagehandle file))))))
+     ((and
+       (string= "local-disk" (file-storageengine file))
+       (string= "raw" (file-storageformat file))
+       (or
+        (cl-ppcre:scan "^image" (file-mimetype file))
+        (cl-ppcre:scan "^video" (file-mimetype file))
+        (cl-ppcre:scan "^application/" (file-mimetype file))))
+      (with-open-file (str (format nil "~A/~A" *storage-location* (file-storagehandle file)) :element-type 'unsigned-byte)
+       (let
+        ((data (make-array (file-bytesize file))))
+        (read-sequence data str)
+        data)))
+     ((string= "chunks" (file-storageengine file))
+      (format t "Skipping chunk method for file ~A, handle later!~%" file-phid)
+      "SKIPPED")
      (t
       (error
        "Don't know how to handle files of with engine,format,mimetype of ~A,~A,~A encounted on ~A"
