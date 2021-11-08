@@ -359,10 +359,15 @@
    (error (format nil "Couldn't find file to upload with id ~S" (parse-integer file-id))))
   (when-unmapped (:file-upoaded (forgerie-core:file-id file))
    (update-file-mapping (:file-upoaded (forgerie-core:file-id file))
-    (flexi-streams:with-input-from-sequence (str (forgerie-core:file-data file))
-     (post-request
-      (format nil "projects/~A/uploads" project-id)
-      `(("file" . ,(list str :filename (forgerie-core:file-name file))))))))
+    (let
+     ((data
+       (if (stringp (forgerie-core:file-data file))
+        (map 'vector #'char-code (forgerie-core:file-data file))
+        (forgerie-core:file-data file))))
+     (flexi-streams:with-input-from-sequence (str data)
+      (post-request
+       (format nil "projects/~A/uploads" project-id)
+       `(("file" . ,(list str :filename (drakma:url-encode (forgerie-core:file-name file) :utf-8)))))))))
   (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
 
 (defun note-mapped (note)
