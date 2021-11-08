@@ -317,7 +317,7 @@
   (mapcar
    (lambda (file-id)
     (getf (first (query (format nil "select phid from phabricator_file.file where id = ~A" file-id))) :phid))
-   *captured-files*)))
+   (cached "everything" "captured-files" *captured-files*))))
 
 (defun add-author-to-paste-comment (comment)
  (append
