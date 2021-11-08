@@ -576,7 +576,7 @@
    (comments
     (query
      (format nil
-      "select * from phabricator_differential.differential_transaction_comment where revisionphid = '~A' and isdeleted = 0" phid))))
+      "select * from phabricator_differential.differential_transaction_comment where revisionphid = '~A' and isdeleted = 0 and changesetid is not null" phid))))
   (mapcar
    (lambda (comment)
     (append
