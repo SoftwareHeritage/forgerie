@@ -519,9 +519,9 @@
        (http-error (e)
         (cond
          ((= 400 (http-error-code e))
-          (format *standard-output* "400 error in create-change-comments: ~A" (http-error-resp e)))
+          (format *standard-output* "400 error in create-change-comments: ~A~%" (http-error-resp e)))
          ((= 500 (http-error-code e))
-          (format *standard-output* "500 error in create-change-comments: ~A" (http-error-resp e)))
+          (format *standard-output* "500 error in create-change-comments: ~A~%" (http-error-resp e)))
          (t (error e))))))))
    (forgerie-core:merge-request-change-comments change))))
 

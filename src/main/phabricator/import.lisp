@@ -35,6 +35,7 @@
 
 (defun query (query)
  (when (not (assoc query *query-cache* :test #'string=))
+  (when forgerie-core:*debug* (format t "~S~%" query))
   (setf *query-cache*
    (cons
     (cons
@@ -586,13 +587,13 @@
      (lambda (comment) (/= (differential-transaction-comment-isnewfile comment) 1))
      inline-comments)
     (error "Ran into a transaction comment where it's not a new file, can't handle."))
-   ((some
-     (lambda (comment)
-      (notany
-       (lambda (commit) (comment-attached-to-commit comment commit))
-       commits))
-     inline-comments)
-    (error "Inline comment does not have a commit it goes with, can't handle"))
+;   ((find-if
+;     (lambda (comment)
+;      (notany
+;       (lambda (commit) (comment-attached-to-commit comment commit))
+;       commits))
+;     inline-comments)
+;    (error "Inline comment does not have a commit it goes with, can't handle"))
    (t
     (mapcar
      (lambda (commit)
@@ -606,7 +607,6 @@
      commits)))))
 
 (defun thread-inline-comments (comments)
- ;(format t "~S~%" comments)
  (labels
   ((thread-comment (comment-to-thread comments)
     (when comments
@@ -650,7 +650,7 @@
      (get-commits-from-db rev)
      (handler-case
       (get-commits-from-staging rev)
-      (error (e) (format t "Failed to get commit from staging due to error ~A, falling back." e)))
+      (error (e) (format t "Failed to get commit from staging due to error ~A, falling back.~%" e)))
      (build-raw-commit rev)))))
   (attach-inline-comments-to-commits
    commits
@@ -728,8 +728,6 @@
 (defun convert-change-to-core (commit)
  (labels
   ((convert-comment-to-core (comment)
-    (when (= 61 (differential-transaction-comment-linenumber comment))
-     (format t "~S~%" comment))
     (forgerie-core:make-merge-request-change-comment
      :line (differential-transaction-comment-linenumber comment)
      :date (unix-to-universal-time (differential-transaction-comment-datecreated comment))
