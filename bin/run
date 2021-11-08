@@ -1,4 +1,4 @@
-#!/usr/bin/sbcl --script
+#!/usr/bin/env -S /usr/bin/sbcl --dynamic-space-size 2048 --script
 
 (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
                                        (user-homedir-pathname))))
@@ -7,6 +7,7 @@
 
 (ql:quickload :forgerie)
 
+(setf sb-impl::*default-external-format* :UTF-8)
 (setf drakma:*drakma-default-external-format* 'UTF-8)
 
 (forgerie-core:run :phabricator :gitlab)
