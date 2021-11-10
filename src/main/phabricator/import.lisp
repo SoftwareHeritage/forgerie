@@ -699,16 +699,22 @@
 
 (defun parse-comment (comment)
  (labels
-  ((first-instance-of (regex type &optional (comment comment))
+  ((first-instance-of (regex type &key with-aftercheck (comment comment))
     (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan regex comment)
      (cond
       ((not start) nil)
+      ((eql type :link)
+       (list start end type
+        (list
+         (subseq comment (aref match-starts 0) (aref match-ends 0))
+         (subseq comment (aref match-starts 1) (aref match-ends 1)))
+        (subseq comment start end)))
       ((or (zerop start) (= end (length comment)))
        (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))
-      ((cl-ppcre:scan "[\\d\\w]" (subseq comment (1- start) start))
-       (first-instance-of regex type (subseq comment end)))
-      ((cl-ppcre:scan "[\\d\\w]" (subseq comment end (1+ end)))
-       (first-instance-of regex type (subseq comment end)))
+      ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment (1- start) start)))
+       (first-instance-of regex type :comment (subseq comment end)))
+      ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment end (1+ end))))
+       (first-instance-of regex type :comment (subseq comment end)))
       (t
        (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))))))
   (let*
@@ -717,6 +723,12 @@
       (sort
        (remove-if-not #'identity
         (list
+         (first-instance-of "\\n= ([^\\n]*) =\\n" :h1)
+         (first-instance-of "\\n== ([^\\n]*) ==\\n" :h2)
+         (first-instance-of "\\n=== ([^\\n]*) ===\\n" :h3)
+         (first-instance-of "\\n==== ([^\\n]*) ====\\n" :h4)
+         (first-instance-of "\\n===== ([^\\n]*) =====\\n" :h5)
+         (first-instance-of "\\[\\[ *([^| ]*) *\\| *([^\\]]*) *\\]\\]" :link)
          (first-instance-of "\{F(\\d+)\}" :file)
          (first-instance-of "T(\\d+)(#\\d+)?" :ticket)
          (first-instance-of "P(\\d+)(#\\d+)?" :snippet)
@@ -781,7 +793,7 @@
     (format nil "~A~A"
      (map 'string #'code-char (differential-revision-summary revision-def))
      (if (differential-revision-testplan revision-def)
-      (format nil "~%Test Plan~%~%~A" (map 'string #'code-char (differential-revision-testplan revision-def)))
+      (format nil "~%~%== Test Plan ==~%~%~A" (map 'string #'code-char (differential-revision-testplan revision-def)))
       "")))
    :author (convert-user-to-core (differential-revision-author revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))

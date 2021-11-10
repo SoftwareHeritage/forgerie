@@ -330,6 +330,12 @@
      (cond
       ((stringp item) item)
       ((eql (car item) :file) (handle-file (cadr item)))
+      ((eql (car item) :h1) (format nil "~%# ~A~%" (cadr item)))
+      ((eql (car item) :h2) (format nil "~%## ~A~%" (cadr item)))
+      ((eql (car item) :h3) (format nil "~%### ~A~%" (cadr item)))
+      ((eql (car item) :h4) (format nil "~%#### ~A~%" (cadr item)))
+      ((eql (car item) :h5) (format nil "~%##### ~A~%" (cadr item)))
+      ((eql (car item) :link) (format nil "[~A](~A)" (cadr (cadr item)) (car (cadr item))))
       ((mapped-item-p item :ticket) (handle-mapped-item item :ticket "#"))
       ((mapped-item-p item :merge-request) (handle-mapped-item item :merge-request "!"))
       ((mapped-item-p item :snippet) (handle-mapped-item item :snippet "$"))
