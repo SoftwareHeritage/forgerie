@@ -270,7 +270,51 @@
       (setf moved-forward t)
       (push first-error *note-mapping-skips*))))
   (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)
+  (mapcar #'add-commit-comments vc-repositories)
   (mapcar #'update-user-admin-status (validate-users (getf data :users)))))
+
+(defun add-commit-comments (vc-repository)
+ (single-project-check (forgerie-core:vc-repository-name vc-repository)
+  (let
+   ((project (find-project-by-name (forgerie-core:vc-repository-name vc-repository))))
+   (mapcar
+    (lambda (commit)
+     (let*
+      ((comment (forgerie-core:commit-parsed-comment commit))
+       (mappings
+        (remove-if-not
+         (lambda (item)
+          (and
+           (listp item)
+           (find (car item) (list :ticket :merge-request :snippet))
+           (find-mapped-item (car item) (parse-integer (cadr item)))))
+         comment))
+       (body
+        (when mappings
+         (format nil "Commit comment has updated locations:~%~%~{* ~A is now ~A~%~}"
+          (apply #'append
+           (mapcar
+            (lambda (item)
+             (let
+              ((mi (find-mapped-item (car item) (parse-integer (cadr item))))
+               (c
+                (cond
+                 ((eql :ticket (car item)) "#")
+                 ((eql :merge-request (car item)) "!")
+                 ((eql :snippet (car item)) "$"))))
+              (list
+               (caddr item)
+               (if (equal (getf project :id) (mapped-item-project-id mi))
+                (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
+                (let
+                 ((other-project (find-project-by-id (mapped-item-project-id mi))))
+                 (format nil "~A~A~A" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi))))))))
+            mappings))))))
+      (when body
+       (post-request
+        (format nil "/projects/~A/repository/commits/~A/discussions" (getf project :id) (forgerie-core:commit-sha commit))
+        `(("body" . ,body))))))
+    (forgerie-core:vc-repository-commits vc-repository)))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are

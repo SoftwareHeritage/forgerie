@@ -7,7 +7,7 @@
   #:*working-directory*
   #:import-forge #:export-forge
   #:make-file #:file-id #:file-name #:file-data
-  #:make-commit #:commit-sha #:commit
+  #:make-commit #:commit-sha #:commit #:commit-parsed-comment
   #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit
   #:make-note #:note-text #:note-author #:note-date #:note-id
@@ -25,7 +25,7 @@
 
   ; vc-repository.lisp
   #:make-vc-repository #:vc-repository-name #:vc-repository-slug #:vc-repository-primary-projects #:vc-repository-projects
-  #:vc-repository-git-location
+  #:vc-repository-git-location #:vc-repository-commits
 
   ; snippet.lisp
   #:make-snippet #:snippet-id #:snippet-title #:snippet-files #:snippet-notes #:snippet-author #:snippet

@@ -16,7 +16,10 @@
 ; target forge against main as it was at that point in time.
 (defstruct branch name commit)
 
-(defstruct commit sha)
+; The parsed comment here is a comment after being parsed by the
+; source systems, allowing target systems to do interesting things
+; like update mappings and provide information.
+(defstruct commit sha parsed-comment)
 (defstruct patch diff)
 
 ; "text" here is actually a list of:

@@ -18,4 +18,5 @@
  ; declare.
  primary-projects
  git-location
- projects)
+ projects
+ commits)

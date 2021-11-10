@@ -19,8 +19,8 @@
 (getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
-(getf-convenience repository id phid repositoryslug name localpath projects primary-projects)
-(getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments)
+(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits)
+(getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments git-comment)
 (getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers)
 (getf-convenience task-comment id author authorphid content datecreated)
 (getf-convenience user id username realname phid emails isadmin)
@@ -207,6 +207,24 @@
        associated-projects))))
    (list :projects associated-projects))))
 
+(defun annotate-repository-commits (repo)
+ (append
+  (list
+   :commits
+   (cached "repository-commits" (repository-phid repo)
+    (mapcar
+     (lambda (sha)
+      (list
+       :commitidentifier sha
+       :git-comment
+       (nth-value 1
+        (forgerie-core:git-cmd
+         (repository-localpath repo)
+         "log"
+         (list "--format=%B" "-n" "1" sha)))))
+     (mapcar #'car (get-shas-and-details repo)))))
+  repo))
+
 (defun get-repository (phid)
  (attach-projects-to-repository
   (first
@@ -225,15 +243,16 @@
 
 (defun get-repositories ()
  (let
-  ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository")))
-  (mapcar #'attach-projects-to-repository
-   (remove-if
-    (lambda (repo)
-     (eql :skip
-      (getf
-       (find (repository-id repo) *repository-overrides* :key (lambda (override) (getf override :key)))
-        :action)))
-    repositories))))
+  ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where id = 57")))
+  (mapcar #'annotate-repository-commits
+   (mapcar #'attach-projects-to-repository
+    (remove-if
+     (lambda (repo)
+      (eql :skip
+       (getf
+        (find (repository-id repo) *repository-overrides* :key (lambda (override) (getf override :key)))
+         :action)))
+     repositories)))))
 
 (defun get-file (file-phid)
  (let*
@@ -750,7 +769,11 @@
 (defun convert-commit-to-core (commit)
  (cond
   ((repository-commit-commitidentifier commit)
-   (forgerie-core:make-commit :sha (repository-commit-commitidentifier commit)))
+   (forgerie-core:make-commit
+    :sha (repository-commit-commitidentifier commit)
+    :parsed-comment
+    (when (repository-commit-git-comment commit)
+     (parse-comment (repository-commit-git-comment commit)))))
   ((repository-commit-patch commit)
    (forgerie-core:make-patch :diff (repository-commit-patch commit)))))
 
@@ -818,7 +841,8 @@
   :slug (repository-repositoryslug repository-def)
   :projects (mapcar #'convert-project-to-core (repository-projects repository-def))
   :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
-  :git-location (repository-localpath repository-def)))
+  :git-location (repository-localpath repository-def)
+  :commits (mapcar #'convert-commit-to-core (repository-commits repository-def))))
 
 (defun convert-project-to-core (project-def)
  (forgerie-core:make-project
