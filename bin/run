@@ -7,7 +7,4 @@
 
 (ql:quickload :forgerie)
 
-(setf sb-impl::*default-external-format* :UTF-8)
-(setf drakma:*drakma-default-external-format* 'UTF-8)
-
 (forgerie-core:run :phabricator :gitlab)
