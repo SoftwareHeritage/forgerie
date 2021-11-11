@@ -30,11 +30,9 @@
 (defun make-request (path method parameters &key sudo)
  (let
   ((parameters
-    ;(cons
-     ;(cons "private_token" *private-token*)
-     (append
-      (when sudo (list (cons "sudo" sudo)))
-      parameters)))
+    (append
+     (when sudo (list (cons "sudo" sudo)))
+     parameters)))
   (multiple-value-bind
    (body code headers uri stream must-close reason-phrase)
    (drakma:http-request (format nil "~A/api/v4/~A" *server-address* path) :method method :parameters parameters
