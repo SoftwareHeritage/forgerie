@@ -6,7 +6,7 @@
   ; base.lisp
   #:*working-directory*
   #:import-forge #:export-forge
-  #:make-file #:file-id #:file-name #:file-data
+  #:make-file #:file-id #:file-name #:file-data #:file-mimetype
   #:make-commit #:commit-sha #:commit #:commit-parsed-comment
   #:make-patch #:patch-diff #:patch
   #:make-branch #:branch-name #:branch-commit
@@ -14,7 +14,7 @@
 
   ; user.lisp
   #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
-  #:user-admin
+  #:user-admin #:user-avatar
 
   ; project.lisp
   #:make-project #:project-name #:project-tags

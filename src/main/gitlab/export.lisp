@@ -498,17 +498,41 @@
 
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))
-  (let
-   ((gl-user
-     (post-request
-      "users"
+  (let*
+   ((avatar (forgerie-core:user-avatar user))
+    (avatar
+     (when avatar
+      (if (> (* 1024 200) (length (forgerie-core:file-data avatar)))
+       avatar
+       (progn
+        (forgerie-core:add-mapping-error
+         :user-avatar-too-big
+         (forgerie-core:user-username user)
+         (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (length (forgerie-core:file-data avatar))))))))
+    (avatar-filename
+     (when avatar
+      (if
+       (find-if
+        (lambda (ext) (cl-ppcre:scan (format nil "~A$" ext) (forgerie-core:file-name avatar)))
+        (list "png" "jpg" "jpeg" "gif" "bmp" "tiff" "ico" "webp"))
+       (forgerie-core:file-name avatar)
+       (format nil "~A.~A" (forgerie-core:file-name avatar)
+        (cond
+         ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
+         (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
+    (gl-user
+     (flexi-streams:with-input-from-sequence (str (if avatar (forgerie-core:file-data avatar) #()))
+      (post-request
+       "users"
       `(("name" . ,(forgerie-core:user-name user))
         ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
         ; Everyone must be an admin to make some of the other import things work correctly
         ; and then admin must be removed after
         ("admin" . "true")
         ("reset_password" . "true")
-        ("username" . ,(forgerie-core:user-username user))))))
+        ("username" . ,(forgerie-core:user-username user))
+      ,@(when avatar
+         (list (cons "avatar" (list str :content-type (forgerie-core:file-mimetype avatar) :filename (drakma:url-encode avatar-filename :utf-8))))))))))
    (mapcar
     (lambda (email)
      (post-request (format nil "/users/~A/emails" (getf gl-user :id))

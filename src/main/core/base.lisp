@@ -5,7 +5,7 @@
 (defgeneric import-forge (forge))
 (defgeneric export-forge (forge data))
 
-(defstruct file id name data)
+(defstruct file id name data mimetype)
 
 ; A branch in forgerie exists outside of git branches.  Because
 ; we import things that exist at certain times, the branch may

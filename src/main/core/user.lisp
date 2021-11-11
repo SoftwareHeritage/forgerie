@@ -7,6 +7,7 @@
  name
  emails ; there can be multiple
  admin ; boolean for now
+ avatar
  )
 
 (defun user-primary-email (user)
