@@ -354,8 +354,6 @@
    (mapcar
     (lambda (paste)
      (let
-      ; ignore-errors here is due to the nature of the data we're working with,
-      ; and should probably get removed later on
       ((file (get-file (paste-filephid paste))))
       (when file (append (list :file file) paste))))
     (remove-if
