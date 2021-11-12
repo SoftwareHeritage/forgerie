@@ -1,4 +1,4 @@
-#!/usr/bin/env -S /usr/bin/sbcl --dynamic-space-size 2048 --script
+#!/usr/bin/env -S /usr/bin/sbcl --dynamic-space-size 1024 --script
 
 (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
                                        (user-homedir-pathname))))

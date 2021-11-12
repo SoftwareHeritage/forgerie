@@ -13,7 +13,7 @@
 (getf-convenience differential-diff id)
 (getf-convenience edge dst)
 (getf-convenience email address isprimary)
-(getf-convenience file id storageengine storageformat storagehandle name data mimetype bytesize)
+(getf-convenience file id storageengine storageformat storagehandle name location mimetype bytesize phid)
 (getf-convenience file-storageblob data)
 (getf-convenience paste id phid title filephid file comments author authorphid)
 (getf-convenience paste-comment id author authorphid content datecreated)
@@ -255,72 +255,55 @@
          :action)))
      repositories)))))
 
+(defun db-file (file-phid)
+ (first
+  (query
+   (format nil "select id, phid, name, storageEngine, storageFormat, storageHandle, mimetype, bytesize from phabricator_file.file where phid = '~A'"
+    file-phid))))
+
+(defun put-file-on-disk (out file)
+ (cond
+  ((and (string= "blob" (file-storageengine file)) (string= "raw" (file-storageformat file)))
+   (write-sequence
+    (file-storageblob-data
+     (first
+      (query
+       (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
+        (file-storagehandle file)))))
+    out))
+  ((and
+    (string= "local-disk" (file-storageengine file))
+    (string= "raw" (file-storageformat file)))
+   (with-open-file (str (format nil "~A/~A" *storage-location* (file-storagehandle file)) :element-type 'unsigned-byte)
+    (let
+     ((data (make-array (file-bytesize file))))
+     (read-sequence data str)
+     (write-sequence data out))))
+  ((string= "chunks" (file-storageengine file))
+   (mapcar
+    (lambda (chunk)
+     (put-file-on-disk out (db-file (getf chunk :datafilephid)))
+     (force-output out))
+    (query
+     (format nil "select dataFilePHID from phabricator_file.file_chunk where chunkhandle = '~A' order by byteStart" (file-storagehandle file)))))
+  (t
+   (error
+    "Don't know how to handle files of with engine,format,mimetype of ~A,~A,~A encounted on ~A"
+    (file-storageengine file)
+    (file-storageformat file)
+    (file-mimetype file)
+    (file-phid file)))))
+
 (defun get-file (file-phid)
  (let*
-  ((file
-    (first
-     (query
-      (format nil "select id, name, storageEngine, storageFormat, storageHandle, mimetype, bytesize from phabricator_file.file where phid = '~A'"
-       file-phid)))))
-  (append
-   file
-   (list
-    :data
-    (cond
-     ((and
-       (string= "blob" (file-storageengine file))
-       (string= "raw" (file-storageformat file))
-       (cl-ppcre:scan "^text/" (file-mimetype file)))
-      (map 'string #'code-char
-       (file-storageblob-data
-        (first
-         (query
-          (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
-           (file-storagehandle file)))))))
-     ((and
-       (string= "local-disk" (file-storageengine file))
-       (string= "raw" (file-storageformat file))
-       (cl-ppcre:scan "^text/" (file-mimetype file)))
-      (map 'string #'code-char
-       (with-open-file (str (format nil "~A/~A" *storage-location* (file-storagehandle file)) :element-type 'unsigned-byte)
-        (let
-         ((data (make-array (file-bytesize file))))
-         (read-sequence data str)
-         data))))
-     ((and
-       (string= "blob" (file-storageengine file))
-       (string= "raw" (file-storageformat file))
-       (or
-        (cl-ppcre:scan "^image" (file-mimetype file))
-        (cl-ppcre:scan "^video" (file-mimetype file))
-        (cl-ppcre:scan "^application/" (file-mimetype file))))
-     (file-storageblob-data
-      (first
-       (query
-        (format nil "select data from phabricator_file.file_storageblob where id = '~A';"
-         (file-storagehandle file))))))
-     ((and
-       (string= "local-disk" (file-storageengine file))
-       (string= "raw" (file-storageformat file))
-       (or
-        (cl-ppcre:scan "^image" (file-mimetype file))
-        (cl-ppcre:scan "^video" (file-mimetype file))
-        (cl-ppcre:scan "^application/" (file-mimetype file))))
-      (with-open-file (str (format nil "~A/~A" *storage-location* (file-storagehandle file)) :element-type 'unsigned-byte)
-       (let
-        ((data (make-array (file-bytesize file))))
-        (read-sequence data str)
-        data)))
-     ((string= "chunks" (file-storageengine file))
-      (format t "Skipping chunk method for file ~A, handle later!~%" file-phid)
-      "SKIPPED")
-     (t
-      (error
-       "Don't know how to handle files of with engine,format,mimetype of ~A,~A,~A encounted on ~A"
-       (file-storageengine file)
-       (file-storageformat file)
-       (file-mimetype file)
-       file-phid)))))))
+  ((file (db-file file-phid))
+   (dir (format nil "~A/files/~A/" *working-directory* (subseq file-phid (- (length file-phid) 3))))
+   (location (format nil "~A~A" dir file-phid)))
+  (when (not (probe-file location))
+   (ensure-directories-exist dir)
+   (with-open-file (out location :direction :output :element-type 'unsigned-byte)
+    (put-file-on-disk out file)))
+  (append file (list :location location))))
 
 (defvar *captured-files* nil)
 
@@ -913,7 +896,8 @@
  (forgerie-core:make-file
   :id (file-id file-def)
   :name (file-name file-def)
-  :data (file-data file-def)
+  :location (file-location file-def)
+  :size (file-bytesize file-def)
   :mimetype (file-mimetype file-def)))
 
 (defun convert-paste-to-core (paste-def)

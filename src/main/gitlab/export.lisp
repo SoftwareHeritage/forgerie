@@ -410,15 +410,10 @@
    (error (format nil "Couldn't find file to upload with id ~S" (parse-integer file-id))))
   (when-unmapped (:file-upoaded (forgerie-core:file-id file))
    (update-file-mapping (:file-upoaded (forgerie-core:file-id file))
-    (let
-     ((data
-       (if (stringp (forgerie-core:file-data file))
-        (map 'vector #'char-code (forgerie-core:file-data file))
-        (forgerie-core:file-data file))))
-     (flexi-streams:with-input-from-sequence (str data)
-      (post-request
-       (format nil "projects/~A/uploads" project-id)
-       `(("file" . ,(list str :filename (drakma:url-encode (forgerie-core:file-name file) :utf-8)))))))))
+    (with-open-file (str (forgerie-core:file-location file) :element-type 'unsigned-byte)
+     (post-request
+      (format nil "projects/~A/uploads" project-id)
+      `(("file" . ,(list str :filename (drakma:url-encode (forgerie-core:file-name file) :utf-8))))))))
   (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
 
 (defun note-mapped (note)
@@ -502,13 +497,13 @@
    ((avatar (forgerie-core:user-avatar user))
     (avatar
      (when avatar
-      (if (> (* 1024 200) (length (forgerie-core:file-data avatar)))
+      (if (> (* 1024 200) (forgerie-core:file-size avatar))
        avatar
        (progn
         (forgerie-core:add-mapping-error
          :user-avatar-too-big
          (forgerie-core:user-username user)
-         (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (length (forgerie-core:file-data avatar))))))))
+         (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (forgerie-core:file-size avatar)))))))
     (avatar-filename
      (when avatar
       (if
@@ -521,7 +516,7 @@
          ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
          (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
     (gl-user
-     (flexi-streams:with-input-from-sequence (str (if avatar (forgerie-core:file-data avatar) #()))
+     (with-open-file (str (if avatar (forgerie-core:file-location avatar) "/dev/null") :element-type 'unsigned-byte)
       (post-request
        "users"
       `(("name" . ,(forgerie-core:user-name user))
@@ -700,7 +695,7 @@
     ((default-project (default-project))
      (file (first (forgerie-core:snippet-files snippet))))
     (if
-     (zerop (length (forgerie-core:file-data file)))
+     (zerop (forgerie-core:file-size file))
      (forgerie-core:add-mapping-error
       :gitlab-snippet-empty
       (forgerie-core:snippet-id snippet)
@@ -709,17 +704,18 @@
       (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
        (handler-case
         (update-mapping (:snippet (forgerie-core:snippet-id snippet))
-         (post-request
-          (format nil "/projects/~A/snippets" (getf default-project :id))
-          ; This is deprecated, but it's an easier interface for now.  Someday we may have
-          ; an importer that has more than one file, or gitlab may fully remove this, and
-          ; then this code will need to be updated
-          ;
-          ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
-         `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
-           ("content" . ,(forgerie-core:file-data file))
-           ("visibility" . "public")
-           ("file_name" . ,(forgerie-core:file-name file)))))
+         (with-open-file (str (forgerie-core:file-location file))
+          (post-request
+           (format nil "/projects/~A/snippets" (getf default-project :id))
+           ; This is deprecated, but it's an easier interface for now.  Someday we may have
+           ; an importer that has more than one file, or gitlab may fully remove this, and
+           ; then this code will need to be updated
+           ;
+           ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
+          `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
+            ("content" . ,str)
+            ("visibility" . "public")
+            ("file_name" . ,(forgerie-core:file-name file))))))
         (error (e)
          (forgerie-core:add-mapping-error
           :gitlab-snippet-error

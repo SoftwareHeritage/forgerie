@@ -5,7 +5,8 @@
 (defgeneric import-forge (forge))
 (defgeneric export-forge (forge data))
 
-(defstruct file id name data mimetype)
+; Files should be stored on disk somewhere
+(defstruct file id name size location mimetype)
 
 ; A branch in forgerie exists outside of git branches.  Because
 ; we import things that exist at certain times, the branch may
