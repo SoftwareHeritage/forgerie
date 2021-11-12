@@ -1,5 +1,7 @@
 (in-package #:forgerie-core)
 
+(defvar *log-mapping-errors* t)
+
 (defstruct mapping-error
  error-type
  object-id
@@ -17,13 +19,15 @@
 
 (defun add-mapping-error (error-type object-id description)
  (when
-  (not
-   (find-if
-    (lambda (mapping-error)
-     (and
-      (equal (mapping-error-error-type mapping-error) error-type)
-      (equal (mapping-error-object-id mapping-error) object-id)))
-    (mapping-errors)))
+  (and
+   *log-mapping-errors*
+   (not
+    (find-if
+     (lambda (mapping-error)
+      (and
+       (equal (mapping-error-error-type mapping-error) error-type)
+       (equal (mapping-error-object-id mapping-error) object-id)))
+     (mapping-errors))))
   (setf
    *mapping-errors*
    (cons

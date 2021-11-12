@@ -42,7 +42,7 @@
   #:merge-request-change-comment-date
 
   ; errors.lisp
-  #:add-mapping-error
+  #:add-mapping-error #:*log-mapping-errors*
 
   ; utils.lisp
   #:vc-repositories-with-primary-project #:git-cmd #:*debug*))
