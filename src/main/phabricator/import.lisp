@@ -244,7 +244,7 @@
 
 (defun get-repositories ()
  (let
-  ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where id = 57")))
+  ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug is not null")))
   (mapcar #'annotate-repository-commits
    (mapcar #'attach-projects-to-repository
     (remove-if
