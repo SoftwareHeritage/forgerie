@@ -11,7 +11,7 @@ See the [DESIGN.md](DESIGN.md) for design decisions.
 Configure:
 
 ```
-$ cp config/config.lisp{tmpl}
+$ cp config/config.lisp.tmpl config/config.lisp 
 $ $EDITOR config/config.lisp
 ```
 
