@@ -117,7 +117,10 @@
   (mapcar
    (lambda (mr)
     (if
-     (not (find (forgerie-core:merge-request-vc-repository mr) vc-repositories :test #'equalp))
+     (not
+      (find
+       (forgerie-core:vc-repository-slug (forgerie-core:merge-request-vc-repository mr))
+       vc-repositories :test #'string= :key #'forgerie-core:vc-repository-slug))
      (forgerie-core:add-mapping-error
       :gitlab-merge-request-not-assignable
       (forgerie-core:merge-request-id mr)
@@ -272,7 +275,8 @@
       (push first-error *note-mapping-skips*))))
   (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)
   (mapcar #'add-commit-comments vc-repositories)
-  (mapcar #'update-user-admin-status (validate-users (getf data :users)))))
+  (mapcar #'update-user-admin-status (validate-users (getf data :users)))
+  (add-users-to-projects vc-repositories (validate-users (getf data :users)))))
 
 (defun add-commit-comments (vc-repository)
  (single-project-check (forgerie-core:vc-repository-name vc-repository)
@@ -312,9 +316,11 @@
                  (format nil "~A~A~A" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi))))))))
             mappings))))))
       (when body
-       (post-request
-        (format nil "/projects/~A/repository/commits/~A/discussions" (getf project :id) (forgerie-core:commit-sha commit))
-        `(("body" . ,body))))))
+       (when-unmapped (:commit-comment (forgerie-core:commit-sha commit))
+        (post-request
+         (format nil "/projects/~A/repository/commits/~A/discussions" (getf project :id) (forgerie-core:commit-sha commit))
+         `(("body" . ,body)))
+        (update-mapping (:commit-comment (forgerie-core:commit-sha commit)))))))
     (forgerie-core:vc-repository-commits vc-repository)))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
@@ -471,6 +477,7 @@
      (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket)))))))))
 
 (defun create-ticket-links (ticket vc-repositories)
+ (when-unmapped (:ticket-links (forgerie-core:ticket-id ticket))
  (single-project-check
   (let
    ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
@@ -490,7 +497,8 @@
         (format nil "projects/~A/issues/~A/links" (getf gl-ticket :project_id) (getf gl-ticket :iid))
         `(("target_project_id" . ,(princ-to-string (getf gl-linked-ticket :project_id)))
           ("target_issue_iid" . ,(princ-to-string (getf gl-linked-ticket :iid))))))))
-    (forgerie-core:ticket-linked-tickets ticket)))))
+    (forgerie-core:ticket-linked-tickets ticket)))
+  (update-mapping (:ticket-links (forgerie-core:ticket-id ticket))))))
 
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))
@@ -544,6 +552,34 @@
     (format nil "/users/~A" (getf gl-user :id))
     `(("admin" . ,(if (forgerie-core:user-admin user) "true" "false")))))
   (update-mapping (:user-admin-set (forgerie-core:user-username user)))))
+
+(defun add-users-to-projects (vc-repositories users)
+ (let
+  ((users-to-gl-users
+    (mapcar
+     (lambda (user)
+      (list
+       (forgerie-core:user-username user)
+       (retrieve-mapping :user (forgerie-core:user-username user))))
+     users)))
+  (mapcar
+   (lambda (vc-repository)
+    (when-unmapped (:members-added-to-project (forgerie-core:vc-repository-slug vc-repository))
+     (let
+      ((gl-project (find-project-by-name (forgerie-core:vc-repository-name vc-repository))))
+      (mapcar
+       (lambda (user)
+        (let
+         ((gl-user (cadr (find (forgerie-core:user-username user) users-to-gl-users :key #'car :test #'string=))))
+         (handler-case
+          (post-request
+           (format nil "/projects/~A/members" (getf gl-project :id))
+           `(("user_id" . ,(prin1-to-string (getf gl-user :id)))
+             ("access_level" . "30")))
+          (http-error (e) (format t "Ran into error on members ~S~%" e)))))
+       users))
+     (update-mapping (:members-added-to-project (forgerie-core:vc-repository-slug vc-repository)))))
+   vc-repositories)))
 
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
@@ -708,7 +744,10 @@
       (when-unmapped (:snippet (forgerie-core:snippet-id snippet))
        (handler-case
         (update-mapping (:snippet (forgerie-core:snippet-id snippet))
-         (with-open-file (str (forgerie-core:file-location file))
+         (let
+          ((content
+            (with-open-file (str (forgerie-core:file-location file) :element-type 'unsigned-byte)
+             (let ((seq (make-sequence 'vector (file-length str)))) (read-sequence seq str) (map 'string #'code-char seq)))))
           (post-request
            (format nil "/projects/~A/snippets" (getf default-project :id))
            ; This is deprecated, but it's an easier interface for now.  Someday we may have
@@ -717,10 +756,11 @@
            ;
            ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
           `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
-            ("content" . ,str)
+            ("content" . ,content)
             ("visibility" . "public")
             ("file_name" . ,(forgerie-core:file-name file))))))
         (error (e)
+         (format t "Failed to create snippet with title ~A~%, due to error ~A~%" (forgerie-core:snippet-title snippet) e)
          (forgerie-core:add-mapping-error
           :gitlab-snippet-error
           (forgerie-core:snippet-id snippet)

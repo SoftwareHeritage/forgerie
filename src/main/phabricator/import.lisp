@@ -243,6 +243,14 @@
      "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug = '~A'"
      slug)))))
 
+(defun get-repository-by-id (id)
+ (attach-projects-to-repository
+  (first
+   (query
+    (format nil
+     "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where id = '~A'"
+     id)))))
+
 (defun get-repositories ()
  (let
   ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug is not null")))
