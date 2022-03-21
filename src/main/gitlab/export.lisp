@@ -212,6 +212,7 @@
     (sleep 60)))))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
+ (forgerie-core:check-for-stop)
  (ensure-directories-exist *working-directory*)
  (when *single-project* (remove-single-project))
  (create-default-group)

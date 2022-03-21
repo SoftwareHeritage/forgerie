@@ -140,6 +140,7 @@
      (mapping)))
    (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
     (format ,str "~S" (mapping)))
+   (forgerie-core:check-for-stop)
    ,result)))
 
 (defmacro update-file-mapping ((type original-id) &rest body)
@@ -158,6 +159,7 @@
      (mapping)))
    (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
     (format ,str "~S" (mapping)))
+   (forgerie-core:check-for-stop)
    ,result)))
 
 (defun retrieve-mapping (type original-id)

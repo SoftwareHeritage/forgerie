@@ -39,4 +39,5 @@
      :description description)
     (mapping-errors)))
   (with-open-file (str (mapping-errors-file) :direction :output :if-exists :supersede)
-   (format str "~S" (mapping-errors)))))
+   (format str "~S" (mapping-errors))))
+ (forgerie-core:check-for-stop))

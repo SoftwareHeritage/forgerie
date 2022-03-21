@@ -2,6 +2,13 @@
 
 (defvar *working-directory* nil)
 
+(define-condition stop-processing nil nil)
+
+(defvar *continue-processing* t)
+(defun check-for-stop ()
+ (when (not *continue-processing*)
+  (error (make-instance 'stop-processing))))
+
 (defgeneric import-forge (forge))
 (defgeneric export-forge (forge data))
 

@@ -7,7 +7,7 @@
   #:postmortem #:system-postmortem
 
   ; base.lisp
-  #:*working-directory*
+  #:*working-directory* #:*continue-processing* #:check-for-stop
   #:import-forge #:export-forge
   #:make-file #:file-id #:file-name #:file-mimetype #:file-location #:file-size
   #:make-commit #:commit-sha #:commit #:commit-parsed-comment

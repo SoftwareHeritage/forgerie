@@ -446,6 +446,7 @@
   :output out)))
 
 (defun get-shas-and-details (repository)
+ (forgerie-core:check-for-stop)
  (cached
   "shas-and-details"
   (repository-phid repository)
