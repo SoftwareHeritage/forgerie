@@ -578,7 +578,10 @@
              ;("position[line_range][end][line_code]" . "40606d8fa72800ddf68b5f2cf2b0b30e1d2de8e2_224_134")
              ;("position[line_range][end][type]" . "new")
              ;("position[line_range][end][new_line]" . "134")
-             ("position[new_line]" . ,(princ-to-string (forgerie-core:merge-request-change-comment-line comment)))
+             ,@(when (forgerie-core:merge-request-change-comment-new-line comment)
+                (list (cons "position[new_line]" (princ-to-string (cadr (forgerie-core:merge-request-change-comment-new-line comment))))))
+             ,@(when (forgerie-core:merge-request-change-comment-old-line comment)
+                (list (cons "position[old_line]" (princ-to-string (cadr (forgerie-core:merge-request-change-comment-new-line comment))))))
              ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
              ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
              ("body" . ,note-text)
@@ -599,9 +602,9 @@
        (http-error (e)
         (cond
          ((= 400 (http-error-code e))
-          (format *standard-output* "400 error in create-change-comments: ~A~%" (http-error-resp e)))
+          (format t "400 error in create-change-comments: ~A~%" (http-error-resp e)))
          ((= 500 (http-error-code e))
-          (format *standard-output* "500 error in create-change-comments: ~A~%" (http-error-resp e)))
+          (format t "500 error in create-change-comments: ~A~%" (http-error-resp e)))
          (t (error e))))))))
    (forgerie-core:merge-request-change-comments change))))
 

@@ -8,7 +8,10 @@
 
 ; For comments that are in the changes for the PRs
 (defstruct merge-request-change-comment
- line
+ ; list of two items, the start and ending lines post change
+ new-line
+ ; list of two items, the start and ending lines pre change
+ old-line
  text
  file
  author
@@ -38,6 +41,12 @@
 
  ; Changes is a list of things to be applied.  Each is of the type merge-request-change
  changes
+
+ ; Change comments here differ from change comments on the changes, as those
+ ; are attached to commits, and they differ from the notes here, as they are
+ ; comments that go on the files, with locations and replies, rather than general
+ ; notes added to the merge request as a whole
+ other-change-comments
 
  ; All the comments
  notes)

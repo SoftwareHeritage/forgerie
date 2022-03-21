@@ -40,9 +40,9 @@
 
   #:make-merge-request-change #:merge-request-change-change #:merge-request-change-comments
 
-  #:make-merge-request-change-comment #:merge-request-change-comment-line #:merge-request-change-comment-text
-  #:merge-request-change-comment-replies #:merge-request-change-comment-author #:merge-request-change-comment-file
-  #:merge-request-change-comment-date
+  #:make-merge-request-change-comment #:merge-request-change-comment-new-line #:merge-request-change-comment-old-line
+  #:merge-request-change-comment-text #:merge-request-change-comment-replies #:merge-request-change-comment-author
+  #:merge-request-change-comment-file #:merge-request-change-comment-date #:merge-request-other-change-comments
 
   ; errors.lisp
   #:add-mapping-error #:*log-mapping-errors* #:display-mapping-error
