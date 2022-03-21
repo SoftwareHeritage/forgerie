@@ -1,0 +1,10 @@
+#!/usr/bin/env -S /usr/bin/sbcl --dynamic-space-size 4096 --script
+
+(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
+                                       (user-homedir-pathname))))
+  (when (probe-file quicklisp-init)
+    (load quicklisp-init)))
+
+(ql:quickload :forgerie)
+
+(forgerie-core:postmortem :phabricator :gitlab)

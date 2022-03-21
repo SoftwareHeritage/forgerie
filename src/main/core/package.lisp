@@ -3,6 +3,9 @@
   ; run.lisp
   #:run
 
+  ; postmortem.lisp
+  #:postmortem #:system-postmortem
+
   ; base.lisp
   #:*working-directory*
   #:import-forge #:export-forge
@@ -42,7 +45,7 @@
   #:merge-request-change-comment-date
 
   ; errors.lisp
-  #:add-mapping-error #:*log-mapping-errors*
+  #:add-mapping-error #:*log-mapping-errors* #:display-mapping-error
 
   ; utils.lisp
   #:vc-repositories-with-primary-project #:git-cmd #:*debug*))

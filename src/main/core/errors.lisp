@@ -2,6 +2,8 @@
 
 (defvar *log-mapping-errors* t)
 
+(defgeneric display-mapping-error (error-type object-id description))
+
 (defstruct mapping-error
  error-type
  object-id
