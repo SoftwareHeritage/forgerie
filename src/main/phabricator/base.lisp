@@ -30,3 +30,9 @@
 
 ; List of spaces for tasks that should be marked as confidential
 (defvar *confidential-space-phids* nil)
+
+; List of repositories to process, keyed by repository slug
+; This means that any tasks will be not mappable to a repository, and may end up in the
+; default project of the exporter, so when using this, you'll want to disable that feature
+; in the exporter of choice
+(defvar *included-repositories* nil)

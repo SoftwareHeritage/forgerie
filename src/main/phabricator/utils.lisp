@@ -108,7 +108,7 @@
 
 (defvar *override-cache* nil)
 
-(defmacro cached (dir id item)
+(defmacro cached (dir id item &optional override-cache)
  (let
   ((cache-path (gensym))
    (obj (gensym)))
@@ -116,7 +116,7 @@
    ((,cache-path (format nil "~A/~A/~A" *working-directory* ,dir ,id)))
    (ensure-directories-exist ,cache-path)
    (if
-    (and (probe-file ,cache-path) (not *override-cache*))
+    (and (probe-file ,cache-path) (not ,override-cache) (not *override-cache*))
     (with-open-file (str ,cache-path) (read str))
     (let
      ((,obj ,item))

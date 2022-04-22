@@ -27,3 +27,11 @@
 ; A funciton that takes a forgerie-core:merge-request and adds a string
 ; that should be appended to the description of merge requests.
 (defvar *merge-request-suffix* nil)
+
+; If non nil, the users will only be added to gitlab if they are
+; active in the items that have come over for processing
+(defvar *limit-to-active-users* nil)
+
+; If non nil, will not create the default project.  If it's already created, will
+; write nothing to it
+(defvar *omit-default-project* nil)

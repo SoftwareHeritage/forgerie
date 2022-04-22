@@ -101,7 +101,13 @@
 (defun mapping ()
  (or
   *mapping*
-  (setf *mapping* (when (probe-file (mapping-file)) (with-open-file (str (mapping-file)) (read str))))))
+  (setf *mapping*
+   (when
+    (probe-file (mapping-file))
+    (with-open-file (str (mapping-file))
+     (loop :for obj := (read str nil)
+      :while obj
+      :collect obj))))))
 
 (defun find-mapped-item (type original-id)
  (find
@@ -125,40 +131,44 @@
 (defmacro update-mapping ((type original-id) &rest body)
  (let
   ((result (gensym))
-   (str (gensym)))
- `(let
-   ((,result ,@body))
-   (setf
-    *mapping*
-    (cons
+   (str (gensym))
+   (mapped-item (gensym)))
+ `(let*
+   ((,result ,@body)
+    (,mapped-item
      (make-mapped-item
       :type ,type
       :original-id ,original-id
       :id (getf ,result :id)
       :iid (getf ,result :iid)
-      :project-id (getf ,result :project_id))
+      :project-id (getf ,result :project_id))))
+   (setf
+    *mapping*
+    (cons
+     ,mapped-item
      (mapping)))
-   (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
-    (format ,str "~S" (mapping)))
+   (with-open-file (,str (mapping-file) :direction :output :if-exists :append :if-does-not-exist :create)
+    (format ,str "~S" ,mapped-item))
    (forgerie-core:check-for-stop)
    ,result)))
 
 (defmacro update-file-mapping ((type original-id) &rest body)
  (let
   ((result (gensym))
-   (str (gensym)))
- `(let
-   ((,result ,@body))
-   (setf
-    *mapping*
-    (cons
+   (str (gensym))
+   (mapped-item (gensym)))
+ `(let*
+   ((,result ,@body)
+    (,mapped-item
      (make-mapped-file
       :type ,type
       :original-id ,original-id
-      :response ,result)
-     (mapping)))
-   (with-open-file (,str (mapping-file) :direction :output :if-exists :supersede)
-    (format ,str "~S" (mapping)))
+      :response ,result)))
+   (setf
+    *mapping*
+    (cons ,mapped-item (mapping)))
+   (with-open-file (,str (mapping-file) :direction :output :if-exists :append :if-does-not-exist :create)
+    (format ,str "~S" ,mapped-item))
    (forgerie-core:check-for-stop)
    ,result)))
 

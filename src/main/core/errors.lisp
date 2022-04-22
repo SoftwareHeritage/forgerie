@@ -17,7 +17,13 @@
 (defun mapping-errors ()
  (or
   *mapping-errors*
-  (setf *mapping-errors* (when (probe-file (mapping-errors-file)) (with-open-file (str (mapping-errors-file)) (read str))))))
+  (setf *mapping-errors*
+   (when
+    (probe-file (mapping-errors-file))
+     (with-open-file (str (mapping-errors-file))
+      (loop :for obj := (read str nil)
+       :while obj
+       :collect obj))))))
 
 (defun add-mapping-error (error-type object-id description)
  (when
@@ -30,14 +36,17 @@
        (equal (mapping-error-error-type mapping-error) error-type)
        (equal (mapping-error-object-id mapping-error) object-id)))
      (mapping-errors))))
-  (setf
-   *mapping-errors*
-   (cons
-    (make-mapping-error
-     :error-type error-type
-     :object-id object-id
-     :description description)
-    (mapping-errors)))
-  (with-open-file (str (mapping-errors-file) :direction :output :if-exists :supersede)
-   (format str "~S" (mapping-errors))))
- (forgerie-core:check-for-stop))
+  (let
+   ((mapping-error
+     (make-mapping-error
+      :error-type error-type
+      :object-id object-id
+      :description description)))
+   (setf
+    *mapping-errors*
+    (cons
+     mapping-error
+     (mapping-errors)))
+   (with-open-file (str (mapping-errors-file) :direction :output :if-exists :append)
+    (format str "~S" mapping-error)))
+  (forgerie-core:check-for-stop)))

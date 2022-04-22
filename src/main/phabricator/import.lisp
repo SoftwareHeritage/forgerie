@@ -253,7 +253,13 @@
 
 (defun get-repositories ()
  (let
-  ((repositories (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug is not null")))
+  ((repositories
+    (remove-if
+     (lambda (repository)
+      (and
+       *included-repositories*
+       (not (find (repository-repositoryslug repository) *included-repositories* :test #'string=))))
+     (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug is not null"))))
   (mapcar #'annotate-repository-commits
    (mapcar #'attach-projects-to-repository
     (remove-if
@@ -314,22 +320,26 @@
     (put-file-on-disk out file)))
   (append file (list :location location))))
 
-(defvar *captured-files* nil)
-
-(defun capture-file (id)
- (setf
-  *captured-files*
-  (remove-duplicates
-   (cons id *captured-files*)
-   :test #'string=)))
-
 (defun get-captured-files ()
  (mapcar
   #'get-file
   (mapcar
    (lambda (file-id)
     (getf (first (query (format nil "select phid from phabricator_file.file where id = ~A" file-id))) :phid))
-   (cached "everything" "captured-files" *captured-files*))))
+   (with-open-file (str (format nil "~A/everything/captured-files" *working-directory*))
+    (remove-duplicates
+     (loop :for obj := (read str nil)
+      :while obj
+      :collect obj)
+     :test #'string=)))))
+
+(defun capture-file (id)
+ (with-open-file (str
+                  (format nil "~A/everything/captured-files" *working-directory*)
+                  :direction :output
+                  :if-exists :append
+                  :if-does-not-exist :create)
+  (format str "~S" id)))
 
 (defun add-author-to-paste-comment (comment)
  (append
@@ -694,24 +704,28 @@
   (format t "---------------~%Loading revision ~A~%~%~%" (differential-revision-id rev)))
  (let
   ((repository (get-repository (differential-revision-repositoryphid rev))))
-  (handler-case
-   (cached
-    "revisions"
-    (differential-revision-id rev)
-    (append
-     rev
-     (list :author (get-user (differential-revision-authorphid rev)))
-     (list :comments (get-revision-comments rev))
-     (multiple-value-bind (commits unattached-comments) (get-revision-commits rev)
-      (let
-       ((comments-to-attach
-         (remove-if-not
-          (lambda (comment)
-           (string= (differential-diff-phid (differential-transaction-comment-diff comment)) (differential-revision-activediffphid rev)))
-          unattached-comments)))
-       (list :change-comments comments-to-attach :related-commits commits)))
-     (list :repository repository)))
-   (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e)))))
+  (when
+   (or
+    (not *included-repositories*)
+    (find (repository-repositoryslug repository) *included-repositories* :test #'string=))
+   (handler-case
+    (cached
+     "revisions"
+     (differential-revision-id rev)
+     (append
+      rev
+      (list :author (get-user (differential-revision-authorphid rev)))
+      (list :comments (get-revision-comments rev))
+      (multiple-value-bind (commits unattached-comments) (get-revision-commits rev)
+       (let
+        ((comments-to-attach
+          (remove-if-not
+           (lambda (comment)
+            (string= (differential-diff-phid (differential-transaction-comment-diff comment)) (differential-revision-activediffphid rev)))
+           unattached-comments)))
+        (list :change-comments comments-to-attach :related-commits commits)))
+      (list :repository repository)))
+    (error (e) (format t "Failed to handle revision ~A, due to error ~A, skipping.~%" (differential-revision-id rev) e))))))
 
 (defun get-revision (id)
  (car
@@ -948,8 +962,8 @@
  (list
   :users (cached "everything" "users" (mapcar #'convert-user-to-core (get-users)))
   :projects (cached "everything" "projects" (mapcar #'convert-project-to-core (get-projects)))
-  :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)))
+  :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)) *included-repositories*)
   :snippets (cached "everything" "snippets" (mapcar #'convert-paste-to-core (get-pastes)))
-  :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)))
+  :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)) *included-repositories*)
   :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)))
-  :files (cached "everything" "files" (mapcar #'convert-file-to-core (get-captured-files)))))
+  :files (cached "everything" "files" (mapcar #'convert-file-to-core (get-captured-files)) *included-repositories*)))
