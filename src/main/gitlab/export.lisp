@@ -429,9 +429,6 @@
       `(("file" . ,(list str :filename (drakma:url-encode (forgerie-core:file-name file) :utf-8))))))))
   (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
 
-(defun note-mapped (note)
- (find-mapped-item :find-mapped-item (forgerie-core:note-id note)))
-
 (defun create-ticket (ticket vc-repositories)
  (single-project-check
   (let
@@ -470,7 +467,7 @@
     (when
      (and
       *notes-mode*
-      (notevery #'identity (mapcar #'note-mapped (forgerie-core:ticket-notes ticket))))
+      (not (find-mapped-item :ticket-completed (forgerie-core:ticket-id ticket))))
      (let
       ((gl-ticket (get-request (format nil "projects/~A/issues/~A" project-id (forgerie-core:ticket-id ticket)))))
       (mapcar
