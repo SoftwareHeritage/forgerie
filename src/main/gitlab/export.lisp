@@ -171,6 +171,7 @@
      `(("name" . ,(getf *default-project* :name))
        ("issues_access_level" . "enabled")
        ("snippets_access_level" . "enabled")
+       ("visibility" . "public")
        ("path" . ,(getf *default-project* :path))))))))
 
 (defun default-group ()
@@ -185,7 +186,8 @@
    (post-request
     "groups"
     `(("name" . ,(getf *default-group* :name))
-      ("path" . ,(getf *default-group* :path)))))))
+      ("path" . ,(getf *default-group* :path))
+      ("visibility" . "public"))))))
 
 (defun add-ssh-key ()
  (let
@@ -281,8 +283,7 @@
       (push first-error *note-mapping-skips*))))
   (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)
   (mapcar #'add-commit-comments vc-repositories)
-  (mapcar #'update-user-admin-status (validate-users (getf data :users)))
-  (add-users-to-projects vc-repositories (validate-users (getf data :users)))))
+  (mapcar #'update-user-admin-status (validate-users (getf data :users)))))
 
 (defun add-commit-comments (vc-repository)
  (single-project-check (forgerie-core:vc-repository-name vc-repository)
@@ -358,6 +359,7 @@
          ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
          ("tag_list" . ,(format nil "~{~A~^,~}" tags))
          ("issues_access_level" . "enabled")
+         ("visibility" . "public")
          ("merge_requests_access_level" . "enabled")))))
      (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
     (when
