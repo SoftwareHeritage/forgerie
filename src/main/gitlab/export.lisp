@@ -457,7 +457,7 @@
           ,@(when (forgerie-core:ticket-assignee ticket)
              (list (cons "assignee_id" (princ-to-string (getf (retrieve-mapping :user (forgerie-core:user-username (ensure-user-created (forgerie-core:ticket-assignee ticket)))) :id)))))
             ("confidential" . ,(if (forgerie-core:ticket-confidential ticket) "true" "false"))
-            ("description" . ,(process-note-text (forgerie-core:ticket-description ticket) project-id))
+            ("description" .  ,(process-note-text (append (forgerie-core:ticket-description ticket) (list (ticket-suffix ticket))) project-id))
             ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
           :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:ticket-author ticket))))))
        (mapcar

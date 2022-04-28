@@ -28,6 +28,10 @@
 ; that should be appended to the description of merge requests.
 (defvar *merge-request-suffix* nil)
 
+; A funciton that takes a forgerie-core:ticket and return a string
+; that should be appended to the description of tickets.
+(defvar *ticket-suffix* nil)
+
 ; If non nil, the users will only be added to gitlab if they are
 ; active in the items that have come over for processing
 (defvar *limit-to-active-users* nil)

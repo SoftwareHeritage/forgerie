@@ -86,6 +86,12 @@
   (funcall *merge-request-suffix* mr)
   ""))
 
+(defun ticket-suffix (ticket)
+ (if
+  *ticket-suffix*
+  (funcall *ticket-suffix* ticket)
+  ""))
+
 (defun to-iso-8601 (d)
  (multiple-value-bind (sec min hr date month year) (decode-universal-time d 0)
   (format nil "~A-~2,,,'0@A-~2,,,'0@AT~2,,,'0@A:~2,,,'0@A:~2,,,'0@AZ" year month date hr min sec)))
