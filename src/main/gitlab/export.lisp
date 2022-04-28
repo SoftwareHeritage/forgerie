@@ -323,9 +323,13 @@
             mappings))))))
       (when body
        (when-unmapped (:commit-comment (forgerie-core:commit-sha commit))
-        (post-request
-         (format nil "/projects/~A/repository/commits/~A/discussions" (getf project :id) (forgerie-core:commit-sha commit))
-         `(("body" . ,body)))
+        (let
+         ((commit-in-gitlab
+           (get-request (format nil "/projects/~A/repository/commits/~A" (getf project :id) (forgerie-core:commit-sha commit)))))
+         (post-request
+          (format nil "/projects/~A/repository/commits/~A/discussions" (getf project :id) (forgerie-core:commit-sha commit))
+          `(("body" . ,body)
+            ("created_at" . ,(getf commit-in-gitlab :created_at)))))
         (update-mapping (:commit-comment (forgerie-core:commit-sha commit)))))))
     (forgerie-core:vc-repository-commits vc-repository)))))
 
