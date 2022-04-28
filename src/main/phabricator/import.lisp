@@ -740,54 +740,58 @@
     (query "select id, title, summary, testplan, phid, status, repositoryphid, datecreated, authorphid, activediffphid from phabricator_differential.differential_revision")))))
 
 (defun parse-comment (comment)
- (labels
-  ((first-instance-of (regex type &key with-aftercheck (comment comment))
-    (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan regex comment)
-     (cond
-      ((not start) nil)
-      ((eql type :link)
-       (list start end type
-        (list
-         (subseq comment (aref match-starts 0) (aref match-ends 0))
-         (subseq comment (aref match-starts 1) (aref match-ends 1)))
-        (subseq comment start end)))
-      ((or (zerop start) (= end (length comment)))
-       (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))
-      ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment (1- start) start)))
-       (first-instance-of regex type :comment (subseq comment end)))
-      ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment end (1+ end))))
-       (first-instance-of regex type :comment (subseq comment end)))
-      (t
-       (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))))))
-  (let*
-   ((first-instance
-     (car
-      (sort
-       (remove-if-not #'identity
-        (list
-         (first-instance-of "\\n= ([^\\n]*) =\\n" :h1)
-         (first-instance-of "\\n== ([^\\n]*) ==\\n" :h2)
-         (first-instance-of "\\n=== ([^\\n]*) ===\\n" :h3)
-         (first-instance-of "\\n==== ([^\\n]*) ====\\n" :h4)
-         (first-instance-of "\\n===== ([^\\n]*) =====\\n" :h5)
-         (first-instance-of "\\[\\[ *([^| ]*) *\\| *([^\\]]*) *\\]\\]" :link)
-         (first-instance-of "\{F(\\d+)\}" :file)
-         (first-instance-of "T(\\d+)(#\\d+)?" :ticket)
-         (first-instance-of "P(\\d+)(#\\d+)?" :snippet)
-         (first-instance-of "D(\\d+)(#\\d+)?" :merge-request)))
-       #'<
-       :key #'car))))
-   (when
-    (and first-instance (equal :file (third first-instance)))
-    (capture-file (fourth first-instance)))
-   (cond
-    ((zerop (length comment)) nil)
-    ((not first-instance) (list comment))
-    (t
-     (append
-      (when (not (zerop (car first-instance))) (list (subseq comment 0 (car first-instance))))
-      (list (cddr first-instance))
-      (parse-comment (subseq comment (cadr first-instance)))))))))
+ (let
+  ; This is an oddity in how phabricator represents this part of markdown, and thus it's converted
+  ; to actual markdown (checkbox list items need to be prefaced by a list element like -)
+  ((comment (cl-ppcre:regex-replace-all "\\n( *)\\[(.)\\]" comment (format nil "~%\\1 - [\\2]"))))
+  (labels
+   ((first-instance-of (regex type &key with-aftercheck (comment comment))
+     (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan regex comment)
+      (cond
+       ((not start) nil)
+       ((eql type :link)
+        (list start end type
+         (list
+          (subseq comment (aref match-starts 0) (aref match-ends 0))
+          (subseq comment (aref match-starts 1) (aref match-ends 1)))
+         (subseq comment start end)))
+       ((or (zerop start) (= end (length comment)))
+        (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))
+       ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment (1- start) start)))
+        (first-instance-of regex type :comment (subseq comment end)))
+       ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment end (1+ end))))
+        (first-instance-of regex type :comment (subseq comment end)))
+       (t
+        (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))))))
+   (let*
+    ((first-instance
+      (car
+       (sort
+        (remove-if-not #'identity
+         (list
+          (first-instance-of "\\n= ([^\\n]*) =\\n" :h1)
+          (first-instance-of "\\n== ([^\\n]*) ==\\n" :h2)
+          (first-instance-of "\\n=== ([^\\n]*) ===\\n" :h3)
+          (first-instance-of "\\n==== ([^\\n]*) ====\\n" :h4)
+          (first-instance-of "\\n===== ([^\\n]*) =====\\n" :h5)
+          (first-instance-of "\\[\\[ *([^| ]*) *\\| *([^\\]]*) *\\]\\]" :link)
+          (first-instance-of "\{F(\\d+)\}" :file)
+          (first-instance-of "T(\\d+)(#\\d+)?" :ticket)
+          (first-instance-of "P(\\d+)(#\\d+)?" :snippet)
+          (first-instance-of "D(\\d+)(#\\d+)?" :merge-request)))
+        #'<
+        :key #'car))))
+    (when
+     (and first-instance (equal :file (third first-instance)))
+     (capture-file (fourth first-instance)))
+    (cond
+     ((zerop (length comment)) nil)
+     ((not first-instance) (list comment))
+     (t
+      (append
+       (when (not (zerop (car first-instance))) (list (subseq comment 0 (car first-instance))))
+       (list (cddr first-instance))
+       (parse-comment (subseq comment (cadr first-instance))))))))))
 
 (defun convert-commit-to-core (commit)
  (cond
