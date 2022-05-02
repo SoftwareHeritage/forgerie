@@ -1,6 +1,9 @@
 (in-package #:forgerie-core)
 
-(defvar *log-mapping-errors* t)
+(defvar *log-mapping-errors* t
+ "Boolean which indicates whether mapping errors should be logged.  Defaults
+ to T to create a mapping errors file that can be later used to output
+ what errors the run ran into.")
 
 (defgeneric display-mapping-error (error-type object-id description))
 
@@ -12,7 +15,7 @@
 (defvar *mapping-errors* nil)
 
 (defun mapping-errors-file ()
- (format nil "~A/errors" *working-directory*))
+ (format nil "~Acore/errors" *working-directory*))
 
 (defun mapping-errors ()
  (or

@@ -1,6 +1,8 @@
 (in-package #:forgerie-core)
 
-(defvar *debug* nil)
+(defvar *debug* nil
+ "Set to T to enable output of trace level messaging, such
+as http requests, git commands, and database queries")
 
 (defun vc-repositories-with-primary-project (project vc-repositories)
  (remove-if-not

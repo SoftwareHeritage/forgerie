@@ -57,14 +57,12 @@
  (cdr (assoc query *query-cache* :test #'string=)))
 
 (defun initialize ()
- (cl-mysql:connect :password *database-password*)
+ (cl-mysql:connect :user *database-username* :password *database-password*)
  (cl-mysql:query "set names 'utf8'"))
 
-; This function is only for development mode.  While we have emails
-; turned off for gitlab, there's a chance that something screwed up will happen
-; so we should make it so the aren't real email addresses
 (defun sanitize-address (address)
- (format nil "~A@opentechstrategies.com" (cl-ppcre:regex-replace-all "@" address "_")))
+ (when *email-address-sanitizer*
+  (funcall *email-address-sanitizer* address)))
 
 (defun user-primary-email (user)
  (find 1 (user-emails user) :key #'email-isprimary))
@@ -483,7 +481,7 @@
 
 (defun get-commits-from-staging (revision)
  (let*
-  ((staging-repository (get-repository "PHID-REPO-cuxcaqw5u7vepi4b4bpg"))
+  ((staging-repository (get-repository *staging-repository*))
    (repository (get-repository (differential-revision-repositoryphid revision)))
    (latest-diff
     (first
@@ -690,9 +688,10 @@
     (differential-revision-id rev)
     (or
      (get-commits-from-db rev)
-     (handler-case
-      (get-commits-from-staging rev)
-      (error (e) (format t "Failed to get commit from staging due to error ~A, falling back.~%" e)))
+     (when *staging-repository*
+      (handler-case
+       (get-commits-from-staging rev)
+       (error (e) (format t "Failed to get commit from staging due to error ~A, falling back.~%" e))))
      (build-raw-commit rev)))))
   (attach-inline-comments-to-commits
    commits

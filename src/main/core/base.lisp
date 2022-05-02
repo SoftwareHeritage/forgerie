@@ -1,6 +1,8 @@
 (in-package #:forgerie-core)
 
-(defvar *working-directory* nil)
+(defvar *working-directory* "/tmp/forgerie/"
+ "The working directory for the run.  Core files will be put into
+ 'core' underneath this, and then each forgerie will base on this.")
 
 (define-condition stop-processing nil nil)
 

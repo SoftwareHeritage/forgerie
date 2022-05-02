@@ -154,11 +154,11 @@
  (cdr (assoc id *projects-by-id*)))
 
 (defun default-project ()
- (when (not *omit-default-project*)
+ (when *default-project*
   (find-project-by-name (getf *default-project* :name))))
 
 (defun create-default-project ()
- (when (not *omit-default-project*)
+ (when *default-project*
   (when-unmapped-with-update (:project :default-project)
    (post-request
     "projects"
