@@ -5,6 +5,12 @@
   (when (probe-file quicklisp-init)
     (load quicklisp-init)))
 
+;; Make sure we can provide path to forgerie code...
+(let ((forgerie-path (uiop:getenv "FORGERIE_PATH")))
+  (when (and forgerie-path (probe-file forgerie-path))
+    (push (pathname forgerie-path) asdf:*central-registry*)))
+
+;; so quicklisp is able to run the forgerie code and execute the script
 (ql:quickload :forgerie)
 
 (with-open-file (str "config/config.lisp.tmpl" :direction :output :if-exists :supersede)

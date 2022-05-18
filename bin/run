@@ -1,9 +1,15 @@
 #!/usr/bin/env -S /usr/bin/sbcl --dynamic-space-size 4096 --script
 
+
 (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
                                        (user-homedir-pathname))))
   (when (probe-file quicklisp-init)
     (load quicklisp-init)))
+
+;; Make sure we can provide path to forgerie code...
+(let ((forgerie-path (uiop:getenv "FORGERIE_PATH")))
+  (when (and forgerie-path (probe-file forgerie-path))
+    (push (pathname forgerie-path) asdf:*central-registry*)))
 
 (ql:quickload :forgerie)
 
