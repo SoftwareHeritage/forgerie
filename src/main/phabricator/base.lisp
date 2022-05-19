@@ -1,5 +1,9 @@
 (in-package #:forgerie-phabricator)
 
+(defvar *database-host* nil
+  "Database host to access.")
+(defvar *database-port* 3306
+ "Database host to access.")
 (defvar *database-username* nil
  "Username to access the database.  If NIL, will use the current user")
 (defvar *database-password* nil

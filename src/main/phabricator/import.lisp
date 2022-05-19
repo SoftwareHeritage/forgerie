@@ -56,8 +56,12 @@
     *query-cache*)))
  (cdr (assoc query *query-cache* :test #'string=)))
 
+; https://github.com/hackinghat/cl-mysql/blob/3fbf6e1421484f64c5bcf2ff3c4b96c6f0414f09/pool.lisp#L283
 (defun initialize ()
- (cl-mysql:connect :user *database-username* :password *database-password*)
+  (if *database-host*
+    (cl-mysql:connect :host *database-host* :port *database-port*
+                      :user *database-username* :password *database-password* )
+  (cl-mysql:connect :user *database-username* :password *database-password*))
  (cl-mysql:query "set names 'utf8'"))
 
 (defun sanitize-address (address)
