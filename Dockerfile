@@ -4,7 +4,8 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
   apt-get install -y \
     cl-quicklisp \
     default-libmysqlclient-dev \
-    git
+    git \
+    kubernetes-client
 
 RUN mkdir -p /srv/phabricator /opt/forgerie
 RUN useradd -md /srv/forgerie -s /bin/bash forgerie

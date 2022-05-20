@@ -223,7 +223,7 @@
  (when (not *rails-connection*)
   (setf
    *rails-connection*
-   (sb-ext:run-program "/usr/bin/ssh" *rails-console-ssh-args*
+   (sb-ext:run-program *rails-command* *rails-command-args*
     :input :stream
     :output :stream
     :wait nil))

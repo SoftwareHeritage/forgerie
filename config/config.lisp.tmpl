@@ -56,7 +56,7 @@
 ;
 ; Where the KEY is the database id of the project, and the SLUG is which repository that this
 ; project should be a primary project of.  Then the project will be removed from all other
-; repositories it might be assigned to.  The ramification of this is that tasks that are
+; repositories it mgiht be assigned to.  The ramification of this is that tasks that are
 ; part of this project, for instance, will be assigned to the repository in various forgeries
 ; that link project and repository.
 (setf forgerie-phabricator:*project-assignment-overrides* nil)
@@ -137,22 +137,32 @@
 ; top level.
 (setf forgerie-gitlab:*default-group* nil)
 
-; A tuple of the form '(HOST COMMAND) that informs the gitlab forgerie
-; how to run rails commands over ssh.  It will always use SSH, even if
-; set up to run on localhost, so keys must be installed to ssh to localhost.
+; The rails command to execute, by default this uses ssh. But one could use kubectl or
+; docker instead.
+(setf forgerie-gitlab:*rails-command* nil)
+
+; By default, using ssh, a tuple of the form '(HOST COMMAND) that informs the gitlab
+; forgerie how to run rails commands over ssh. It will always use SSH, even if set up to
+; run on localhost, so keys must be installed to ssh to localhost. When overriden to
+; another command like kubectl, a list '(COMMAND) for the necessary extra args that the
+; command requires to run.
 ;
-; An example for a server using docker might be:
+; When using ssh, an example for a server using docker might be:
 ;
 ; '("ssh.gitlab.yourdomain.tld" "docker exec -i gitlab /opt/gitlab/bin/gitlab-rails c")
 ;
-; A useful thing to do is to run ssh on the server for non git purposes on port 2222, and then
-; set up your .ssh/config to have the following:
+; A useful thing to do is to run ssh on the server for non git purposes on port 2222, and
+; then set up your .ssh/config to have the following:
 ;
 ; Host ssh.gitlab.yourdomain.tld
 ;   User <user>
 ;   Port 2222
 ;   IdentityFile ~/.ssh/your_identity_file
-(setf forgerie-gitlab:*rails-console-ssh-args* nil)
+;
+; When using kube, an example might be:
+;
+; '("exec -ti -n gitlab-system deployment/gitlab-toolbox -- /srv/gitlab/bin/rails console")
+(setf forgerie-gitlab:*rails-command-args* nil)
 
 ; A function that takes an argument of a forgerie-core:merge-request and
 ; returns a string that will be appended to the description of created merge requests.
@@ -169,3 +179,4 @@
 ; If non nil, will only add users to the gitlab instance if they are active in the
 ; items also coming over for processing.  Useful when doing piecemeal conversions.
 (setf forgerie-gitlab:*limit-to-active-users* nil)
+
