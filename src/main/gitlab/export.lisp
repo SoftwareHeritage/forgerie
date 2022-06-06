@@ -359,7 +359,7 @@
          ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
          ("tag_list" . ,(format nil "~{~A~^,~}" tags))
          ("issues_access_level" . "enabled")
-         ("visibility" . "public")
+         ("visibility" . ,(if (forgerie-core:vc-repository-private vc-repository) "private" "public"))
          ("merge_requests_access_level" . "enabled")))))
      (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
     (when

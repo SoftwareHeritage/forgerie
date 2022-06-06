@@ -19,4 +19,5 @@
  primary-projects
  git-location
  projects
+ private
  commits)

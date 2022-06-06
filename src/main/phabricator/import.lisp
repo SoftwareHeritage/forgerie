@@ -19,7 +19,7 @@
 (getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
-(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits)
+(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments git-comment)
 (getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers)
 (getf-convenience task-comment id author authorphid content datecreated)
@@ -230,7 +230,7 @@
   (first
    (query
     (format nil
-     "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where phid = '~A'"
+     "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where phid = '~A'"
      phid)))))
 
 (defun get-repository-by-slug (slug)
@@ -238,7 +238,7 @@
   (first
    (query
     (format nil
-     "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug = '~A'"
+     "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where repositoryslug = '~A'"
      slug)))))
 
 (defun get-repository-by-id (id)
@@ -246,7 +246,7 @@
   (first
    (query
     (format nil
-     "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where id = '~A'"
+     "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where id = '~A'"
      id)))))
 
 (defun get-repositories ()
@@ -257,7 +257,7 @@
       (and
        *included-repositories*
        (not (find (repository-repositoryslug repository) *included-repositories* :test #'string=))))
-     (query "select id, phid, repositoryslug, name, localpath from phabricator_repository.repository where repositoryslug is not null"))))
+     (query "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where repositoryslug is not null"))))
   (mapcar #'annotate-repository-commits
    (mapcar #'attach-projects-to-repository
     (remove-if
@@ -878,6 +878,7 @@
   :projects (mapcar #'convert-project-to-core (repository-projects repository-def))
   :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
   :git-location (repository-localpath repository-def)
+  :private (not (not (find (repository-spacephid repository-def) *confidential-space-phids* :test #'string=)))
   :commits (mapcar #'convert-commit-to-core (repository-commits repository-def))))
 
 (defun convert-project-to-core (project-def)
