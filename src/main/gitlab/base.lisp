@@ -10,10 +10,12 @@
  directory")
 
 (defvar *default-project* nil
- "A plist of the form '(:name NAME :slug SLUG) for the default project
- in which things like snippets, tickets that can't be assigned to a project,
- and other misc items go.  NAME is the proper name of the project, with
- SLUG being the url slug to access it.")
+ "A plist of the form '(:name NAME :slug SLUG :disable-tickets DISABLE)
+ for the default project in which things like snippets, tickets that can't
+ be assigned to a project, and other misc items go.  NAME is the proper name
+ of the project, with SLUG being the url slug to access it.  If DISABLE is
+ set to T, then tickets that can't be assigned to a project will not be
+ assigned to this default project.")
 
 (defvar *ssh-public-key* nil
  "The public key that should be installed for the running user so that git commands

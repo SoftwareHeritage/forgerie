@@ -203,7 +203,7 @@
   ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
   (if vc-repos
    (find-project-by-name (forgerie-core:vc-repository-name (car vc-repos)))
-   (default-project))))
+   (when (not (getf *default-project* :disable-tickets)) (default-project)))))
 
 (defun remove-single-project ()
  (when *single-project*
