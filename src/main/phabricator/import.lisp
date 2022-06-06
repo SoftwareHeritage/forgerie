@@ -963,6 +963,7 @@
   :notes (mapcar #'convert-paste-comment-to-core (paste-comments paste-def))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
+ (setf *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
  (initialize)
  (list
   :users (cached "everything" "users" (mapcar #'convert-user-to-core (get-users)))

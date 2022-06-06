@@ -9,8 +9,6 @@
  set up either from within gitlab, or via a script that uses the rails console
  directory")
 
-(defvar *working-directory* (format nil "~Agitlab/" forgerie-core:*working-directory*))
-
 (defvar *default-project* nil
  "A plist of the form '(:name NAME :slug SLUG) for the default project
  in which things like snippets, tickets that can't be assigned to a project,

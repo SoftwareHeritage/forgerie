@@ -26,7 +26,7 @@
  database can refer to local storage items, which are stored here (other options being
  that the file is stored in the database).")
 
-(defvar *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
+(defvar *working-directory* nil)
 
 ; A list of plists, each having the keys :key and :repository
 ; For each of these, the project at key :key will be assigned to, and only to, repository :repository
