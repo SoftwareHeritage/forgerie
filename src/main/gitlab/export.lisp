@@ -793,6 +793,7 @@
            (forgerie-core:snippet-notes snippet)))
          (rails-command (format nil "s = Snippet.find(~A)" (getf gl-snippet :id)))
          (rails-command (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (ensure-user-created (forgerie-core:snippet-author snippet)))))
+         (rails-command (format nil "s.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:snippet-date snippet))))
          (rails-command "s.author = u")
          (rails-command "s.save")
          (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))))))

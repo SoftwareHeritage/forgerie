@@ -5,4 +5,5 @@
  title
  files
  author
- notes)
+ notes
+ date)
