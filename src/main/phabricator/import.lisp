@@ -964,12 +964,21 @@
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
  (setf *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
- (initialize)
- (list
-  :users (cached "everything" "users" (mapcar #'convert-user-to-core (get-users)))
-  :projects (cached "everything" "projects" (mapcar #'convert-project-to-core (get-projects)))
-  :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)) *included-repositories*)
-  :snippets (cached "everything" "snippets" (mapcar #'convert-paste-to-core (get-pastes)))
-  :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)) *included-repositories*)
-  :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)))
-  :files (cached "everything" "files" (mapcar #'convert-file-to-core (get-captured-files)) *included-repositories*)))
+ (let
+  ((override-everything-cache
+    (and
+     *included-repositories*
+     (not
+      (equal
+       *included-repositories*
+       (cached "everything" "included-repositories" nil))))))
+  (cached "everything" "included-repositories" *included-repositories* t)
+  (initialize)
+  (list
+   :users (cached "everything" "users" (mapcar #'convert-user-to-core (get-users)) override-everything-cache)
+   :projects (cached "everything" "projects" (mapcar #'convert-project-to-core (get-projects)) override-everything-cache)
+   :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)) override-everything-cache)
+   :snippets (cached "everything" "snippets" (mapcar #'convert-paste-to-core (get-pastes)) override-everything-cache)
+   :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)) override-everything-cache)
+   :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)) override-everything-cache)
+   :files (cached "everything" "files" (mapcar #'convert-file-to-core (get-captured-files)) override-everything-cache))))
