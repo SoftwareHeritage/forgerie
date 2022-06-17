@@ -10,6 +10,7 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 RUN useradd -md /srv/forgerie -s /bin/bash forgerie
 RUN mkdir -p /srv/phabricator /opt/forgerie /srv/forgerie/bin
 COPY docker/.sbclrc /srv/forgerie/.sbclrc
+COPY docker/.gitconfig /srv/forgerie/.gitconfig
 COPY docker/entrypoint.sh /srv/forgerie/bin/entrypoint.sh
 COPY docker/ssh /srv/forgerie/.ssh
 RUN chown -R forgerie:forgerie /srv/forgerie /opt/forgerie
