@@ -16,6 +16,7 @@ $ docker run \
     -v /srv/phabricator:/srv/phabricator \
     -v ~/.kube:/srv/forgerie/.kube \
     -v /var/tmp/migrate-gitlab/forgerie:/tmp/forgerie \
+    --ulimit nofile=1024 \
     --name forgerie --net=host -it forgerie
 ```
 
