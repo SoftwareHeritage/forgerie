@@ -526,7 +526,7 @@
    (user (get-user (differential-revision-authorphid revision)))
    (path (format nil "~A/~A/" *working-directory* (repository-repositoryslug repository)))
    (raw-diff
-    (drakma:http-request
+    (dex:get
      (format nil
       "~A/D~A?download=true"
       *phabricator-location*

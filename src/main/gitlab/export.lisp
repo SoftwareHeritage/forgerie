@@ -136,7 +136,7 @@
 (defun find-project-by-name (name)
  (when (not (assoc name *projects-by-name* :test #'string=))
   (let
-   ((project 
+   ((project
      (find
       name
       (get-request "projects" :parameters `(("search" . ,name)))
@@ -430,10 +430,10 @@
    (error (format nil "Couldn't find file to upload with id ~S" (parse-integer file-id))))
   (when-unmapped (:file-upoaded (forgerie-core:file-id file))
    (update-file-mapping (:file-upoaded (forgerie-core:file-id file))
-    (with-open-file (str (forgerie-core:file-location file) :element-type 'unsigned-byte)
      (post-request
       (format nil "projects/~A/uploads" project-id)
-      `(("file" . ,(list str :filename (drakma:url-encode (forgerie-core:file-name file) :utf-8))))))))
+      `(("file" . ,(pathname (forgerie-core:file-location file)))
+        ("filename" . ,(quri:url-encode (forgerie-core:file-name file)))))))
   (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
 
 (defun create-ticket (ticket vc-repositories)
@@ -541,19 +541,28 @@
         (cond
          ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
          (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
+    (avatar-filepath-with-mimetype
+     (when avatar-filename
+       (format nil "~A.~A"
+               (forgerie-core:file-location avatar)
+               (subseq (forgerie-core:file-mimetype avatar) 6))))
     (gl-user
-     (with-open-file (str (if avatar (forgerie-core:file-location avatar) "/dev/null") :element-type 'unsigned-byte)
-      (post-request
-       "users"
-      `(("name" . ,(forgerie-core:user-name user))
-        ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
-        ; Everyone must be an admin to make some of the other import things work correctly
-        ; and then admin must be removed after
-        ("admin" . "true")
-        ("reset_password" . "true")
-        ("username" . ,(forgerie-core:user-username user))
-      ,@(when avatar
-         (list (cons "avatar" (list str :content-type (forgerie-core:file-mimetype avatar) :filename (drakma:url-encode avatar-filename :utf-8))))))))))
+     (progn
+       (when avatar-filepath-with-mimetype
+         (uiop:copy-file (forgerie-core:file-location avatar) avatar-filepath-with-mimetype))
+       ;; using the new make-request implementation (dexador) does not work
+       ;; so use the previous slower implementation which works
+       (post-request
+        "users"
+        `(("name" . ,(forgerie-core:user-name user))
+          ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
+                                        ; Everyone must be an admin to make some of the other import things work correctly
+                                        ; and then admin must be removed after
+          ("admin" . "true")
+          ("reset_password" . "true")
+          ("username" . ,(forgerie-core:user-username user))
+          ,@(when avatar-filepath-with-mimetype
+              `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
    (mapcar
     (lambda (email)
      (post-request (format nil "/users/~A/emails" (getf gl-user :id))

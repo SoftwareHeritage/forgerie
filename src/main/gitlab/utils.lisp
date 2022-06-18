@@ -33,36 +33,38 @@
     (append
      (when sudo (list (cons "sudo" sudo)))
      parameters)))
-  (multiple-value-bind
-   (body code headers uri stream must-close reason-phrase)
-   (drakma:http-request (format nil "~A/api/v4/~A" *server-address* path) :method method :parameters parameters
-    :additional-headers (list (cons "PRIVATE-TOKEN" *private-token*)))
-   (when
-    (not (= 304 code)) ; 304s are empty, and can be ignored
-    (let
-     ((resp (convert-js-to-plist (jsown:parse (map 'string #'code-char body)))))
-     (when forgerie-core:*debug*
-      (format t "*****************~%Gitlab request ~A (~A): ~S~%Status Code: ~S~%Response: ~S~%"
-       path
-       method
-       parameters
-       code
-       resp))
-     (when (not (<= 200 code 299))
+  (handler-case
+   (multiple-value-bind
+    (body code headers uri stream)
+    (dex:request (format nil "~A/api/v4/~A" *server-address* path) :method method :content parameters
+                 :headers (list (cons "PRIVATE-TOKEN" *private-token*)))
+    (when
+     (not (= 304 code)) ; 304s are empty, and can be ignored
+     (let
+      ((resp (convert-js-to-plist (jsown:parse body))))
+      (when forgerie-core:*debug*
+       (format t "*****************~%Gitlab request ~A (~A): ~S~%Status Code: ~S~%Response: ~S~%"
+        path
+        method
+        parameters
+        code
+        resp))
+      resp)))
+   (dex:http-request-failed (e)
       (error
        (make-instance
         'http-error
-        :code code
+        :code (dex:response-status e)
         :path path
         :method method
         :parameters parameters
-        :resp resp
+        :resp (convert-js-to-plist (jsown:parse (dex:response-body e)))
         )))
-     resp)))))
+   )))
 
 (defun git-cmd (project cmd &rest args)
- (forgerie-core:git-cmd
-  (format nil "~A~A" *working-directory* (getf project :path)) cmd args))
+  (forgerie-core:git-cmd
+   (format nil "~A~A" *working-directory* (getf project :path)) cmd args))
 
 (defun git-cmd-code (project cmd &rest args)
  (forgerie-core:git-cmd
