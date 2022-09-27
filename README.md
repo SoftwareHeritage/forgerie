@@ -20,7 +20,7 @@ Follow the installation instructions at [quicklisp.org](https://www.quicklisp.or
 To configure:
 
 ```
-$ cp config/config.lisp.tmpl config/config.lisp 
+$ cp config/config.lisp.tmpl config/config.lisp
 $ $EDITOR config/config.lisp
 ```
 
@@ -36,7 +36,7 @@ Run `bin/run`
 
 # Postmortem
 
-After run, if `forgerie-core:*log-mapping-errors*` is turned out, running
+After run, if `forgerie-core:*log-mapping-errors*` is turned on, running
 `bin/postmortem` will dump out a log of all the errors that happened
 during the run
 

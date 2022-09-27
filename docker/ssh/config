@@ -1,0 +1,6 @@
+Host gitlab-staging.swh.network
+  User git
+  IdentitiesOnly yes
+  IdentityFile ~/.ssh/id_ed25519
+  StrictHostKeyChecking no
+  UserKnownHostsFile=/dev/null

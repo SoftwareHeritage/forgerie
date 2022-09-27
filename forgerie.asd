@@ -37,4 +37,4 @@
       (:file "postmortem")))))
   (:module "config"
    :components ((:file "config"))))
- :depends-on (:cl-mysql :drakma :jsown :cl-ppcre :cl-csv :cl-fad :ironclad))
+ :depends-on (:cl-mysql :uiop :dexador :quri :jsown :cl-ppcre :cl-csv :cl-fad :ironclad))

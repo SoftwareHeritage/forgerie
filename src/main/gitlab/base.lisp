@@ -31,25 +31,36 @@
 ; to do with the project with the name provided.
 (defvar *single-project* nil)
 
-; The args (host and command are normal) for the ssh command to
-; boot the rails console.  Sometimes this is localhost.  Keys
-; have to be set up.
-(defvar *rails-console-ssh-args* nil
- "A tuple of the form '(HOST COMMAND) that informs the gitlab forgerie
- how to run rails commands over ssh.  It will always use SSH, even if
- set up to run on localhost, so keys must be installed to ssh to localhost.
+; The default rails-command to execute the rails console.
+(defvar *rails-command* "/usr/bin/ssh"
+  "The rails command to execute, by default this uses ssh. But one could use kubectl or
+docker instead.")
 
- An example for a server using docker might be:
+; The required args for the *rails-command*.
+(defvar *rails-command-args* nil
+ "By default, using ssh, a tuple of the form '(HOST COMMAND) that informs the gitlab
+ forgerie how to run rails commands over ssh. It will always use SSH, even if set up to
+ run on localhost, so keys must be installed to ssh to localhost. When overriden to
+ another command like kubectl, a list '(COMMAND) for the necessary extra args that the
+ command requires to run.
+
+ When using ssh, an example for a server using docker might be:
 
  '(\"ssh.gitlab.yourdomain.tld\" \"docker exec -i gitlab /opt/gitlab/bin/gitlab-rails c\")
 
- A useful thing to do is to run ssh on the server for non git purposes on port 2222, and then
- set up your .ssh/config to have the following:
+ A useful thing to do is to run ssh on the server for non git purposes on port 2222, and
+ then set up your .ssh/config to have the following:
 
  Host ssh.gitlab.yourdomain.tld
    User <user>
    Port 2222
-   IdentityFile ~/.ssh/your_identity_file")
+   IdentityFile ~/.ssh/your_identity_file
+
+ When using kube, an example might be:
+
+ '(\"exec -ti -n gitlab-system deployment/gitlab-toolbox -- /srv/gitlab/bin/rails console\")
+
+")
 
 (defvar *merge-request-suffix* nil
  "A function that takes an argument of a forgerie-core:merge-request and
