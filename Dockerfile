@@ -11,9 +11,6 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
 RUN useradd -md /srv/forgerie -s /bin/bash forgerie
 RUN mkdir -p /srv/phabricator /opt/forgerie /srv/forgerie/bin
 COPY docker/.sbclrc /srv/forgerie/.sbclrc
-COPY docker/.gitconfig /srv/forgerie/.gitconfig
-COPY docker/entrypoint.sh /srv/forgerie/bin/entrypoint.sh
-COPY docker/ssh /srv/forgerie/.ssh
 RUN chown -R forgerie:forgerie /srv/forgerie /opt/forgerie
 
 USER forgerie
@@ -26,6 +23,10 @@ RUN sbcl --no-sysinit --no-userinit --noprint \
     --quit  # to install and configure quicklisp
 
 COPY . /opt/forgerie
+COPY docker/entrypoint.sh /srv/forgerie/bin/entrypoint.sh
+COPY docker/ssh /srv/forgerie/.ssh
+COPY docker/.gitconfig /srv/forgerie/.gitconfig
+
 ENV FORGERIE_PATH=/opt/forgerie/
 
 # install quicklisp and pulls core dependencies for it to run properly
