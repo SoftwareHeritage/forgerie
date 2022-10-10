@@ -27,6 +27,10 @@
  while SLUG is the url slug.  If NIL, the projects will all be created at the
  top level.")
 
+(defvar *group-structure* nil
+ "A list of plists of the form '(:name NAME :path SLUG :parent SLUG) that
+ define the base structure of groups configured in the gitlab instance")
+
 ; For development only.  Will limit all exporting to things having
 ; to do with the project with the name provided.
 (defvar *single-project* nil)

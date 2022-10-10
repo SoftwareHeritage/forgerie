@@ -189,6 +189,26 @@
       ("path" . ,(getf *default-group* :path))
       ("visibility" . "public"))))))
 
+(defun create-groups ()
+  (when *group-structure*
+    (mapcar
+     (lambda (group)
+       (let
+           ((parent-group-id (if (getf group :parent)
+                                 (mapped-item-id (find-mapped-item :group (getf group :parent)))))
+            (full-path
+              (if (getf group :parent)
+                  (concatenate 'string (getf group :parent) "/" (getf group :path))
+                  (getf group :path))))
+         (when-unmapped-with-update (:group full-path)
+                                    (post-request
+                                     "groups"
+                                     `(("name" . ,(getf group :name))
+                                       ("path" . ,(getf group :path))
+                                       ("parent_id" . ,parent-group-id)  ;; This works fine even if parent-group-id is nil
+                                       ("visibility" . "public"))))))
+     *group-structure*)))
+
 (defun add-ssh-key ()
  (let
   ((key-name "Forgerie Export Key"))
@@ -223,6 +243,7 @@
  (forgerie-core:check-for-stop)
  (ensure-directories-exist *working-directory*)
  (when *single-project* (remove-single-project))
+ (create-groups)
  (create-default-group)
  (create-default-project)
  (add-ssh-key)
