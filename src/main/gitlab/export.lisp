@@ -48,6 +48,12 @@
         (forgerie-core:vc-repository-name vcr)
         (format nil "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr)))
        vcr)
+      ((not (forgerie-core:vc-repository-commits vcr))
+       (forgerie-core:add-mapping-error
+        :source-repository-has-no-commits
+        (forgerie-core:vc-repository-name vcr)
+        (format nil "Source Repository '~A' has no commits.~%" (forgerie-core:vc-repository-name vcr)))
+       vcr)
       ((not
         (remove-if-not
          (lambda (proj) (find proj valid-projects :test #'equalp))
