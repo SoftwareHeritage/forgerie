@@ -6,4 +6,5 @@
  files
  author
  notes
- date)
+ date
+ private)
