@@ -451,6 +451,18 @@
      (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
      (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project))))))
 
+(defun update-event-date (obj-type obj-id new-date &key wait)
+ (let
+  ((find-ev-command
+    (format nil "ev = Event.where(:target => ~A, :target_type => '~A').order_by(:created_at => 'DESC').first"
+     obj-id obj-type)))
+  (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date)))
+  (rails-command "sleep(0.5)")
+  (rails-command find-ev-command)
+  (rails-command "ev.created_at = action_time")
+  (rails-command "ev.updated_at = action_time")
+  (rails-command "ev.save")))
+
 (defun process-note-text (note-text project-id)
  (format nil "~{~A~}"
   (mapcar
@@ -494,12 +506,16 @@
    (when
     (not (cl-ppcre:scan "^\\s*$" note-text))
     (when-unmapped-with-update (:note (forgerie-core:note-id note))
-     (post-request
-      (format nil "/~A~A/~A/notes"
-       (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
-     `(("body" . ,note-text)
-       ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
-      :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:note-author note)))))))))
+     (let
+      ((created-note
+        (post-request
+         (format nil "/~A~A/~A/notes"
+          (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
+         `(("body" . ,note-text)
+           ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
+         :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:note-author note))))))
+      (update-event-date "Note" (getf created-note :id) (forgerie-core:note-date note) :wait t)
+      created-note))))))
 
 (defun create-file (file-id project-id)
  (let
@@ -761,12 +777,7 @@
 
 (defun record-mr-action (gl-mr forgerie-mr action)
  (flet ((update-last-mr-event ()
-          (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
-          (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
-          (rails-command "ev = mr.events[-1]")
-          (rails-command "ev.created_at = action_time")
-          (rails-command "ev.updated_at = action_time")
-          (rails-command "ev.save"))
+         (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-action-date action)))
         (update-last-mr-rse ()
           (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
           (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
@@ -869,9 +880,12 @@
    (when *notes-mode*
     (let
      ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
+     (rails-command (format nil "creation_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
      (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
-     (rails-command (format nil "mr.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
+     (rails-command "mr.created_at = creation_time")
      (rails-command "mr.save")
+     (rails-command "mr.metrics.created_at = creation_time")
+     (rails-command "mr.metrics.save")
      (mapcar
       (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
       (forgerie-core:merge-request-notes mr))
