@@ -14,8 +14,14 @@
 
 (defvar *mapping-errors* nil)
 
+(defun mapping-errors-directory ()
+  (format nil "~Acore/" *working-directory*))
+
 (defun mapping-errors-file ()
- (format nil "~Acore/errors" *working-directory*))
+  (let
+      ((dir (mapping-errors-directory)))
+    (ensure-directories-exist dir)
+    (format nil "~Aerrors" dir)))
 
 (defun mapping-errors ()
  (or
@@ -50,6 +56,6 @@
     (cons
      mapping-error
      (mapping-errors)))
-   (with-open-file (str (mapping-errors-file) :direction :output :if-exists :append)
+   (with-open-file (str (mapping-errors-file) :direction :output :if-exists :append :if-does-not-exist :create)
     (format str "~S" mapping-error)))
   (forgerie-core:check-for-stop)))
