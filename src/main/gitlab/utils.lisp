@@ -234,19 +234,20 @@
     :input :stream
     :output :stream
     :wait nil))
-  (format (sb-ext:process-input *rails-connection*) "0~%" cmd)
+  (format (sb-ext:process-input *rails-connection*) "0~%")
   (force-output (sb-ext:process-input *rails-connection*))
   (loop for line = (read-line (sb-ext:process-output *rails-connection*))
-        do (when forgerie-core:*debug* (format t "Booting: ~A~%" line))
+        do (when forgerie-core:*debug* (format t "Booting rails-console: ~A~%" line))
         until (string= line "0")))
  ; The reason we append a 0 on the end of this, is because irb does some funky
  ; things, expecting you to be running from a terminal with a tty.  So just
  ; doing a 0 and then checking for that output means we'll A) know when the
  ; command is done and B) not run into these no tty errors.
+ (when forgerie-core:*debug* (format t "Sending rails-console command ~A;0~%" cmd))
  (format (sb-ext:process-input *rails-connection*) "~A;0~%" cmd)
  (force-output (sb-ext:process-input *rails-connection*))
  (let
   ((line (read-line (sb-ext:process-output *rails-connection*))))
   (loop for line = (read-line (sb-ext:process-output *rails-connection*))
-        do (when forgerie-core:*debug* (format t "Running: ~A~%" line))
+        do (when forgerie-core:*debug* (format t "Output: ~A~%" line))
         until (string= line "0"))))
