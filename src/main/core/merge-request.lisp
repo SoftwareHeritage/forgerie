@@ -20,6 +20,12 @@
  ; doesn't matter
  replies)
 
+; For actions that happened on a merge-request
+(defstruct merge-request-action
+  author
+  date
+  type)
+
 (defstruct merge-request
  id
  vc-repository
@@ -47,6 +53,9 @@
  ; comments that go on the files, with locations and replies, rather than general
  ; notes added to the merge request as a whole
  other-change-comments
+
+ ; Actions.  Each is of the type merge-request-action
+ actions
 
  ; All the comments
  notes)

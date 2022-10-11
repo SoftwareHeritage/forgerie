@@ -26,11 +26,12 @@
 (getf-convenience user id username realname phid emails isadmin profileimage profileimagephid)
 (getf-convenience differential-revision
  id title summary testplan phid status repository repositoryphid datecreated related-commits author authorphid comments change-comments
- activediffphid)
+ activediffphid actions)
 (getf-convenience differential-transaction-comment
  phid content changesetid isnewfile linenumber linelength replytocommentphid diff replies author authorphid datecreated)
 (getf-convenience differential-diff sourcecontrolbaserevision filename phid)
 (getf-convenience differential-comment id author authorphid content datecreated)
+(getf-convenience differential-action id author authorphid newvalue datecreated)
 
 (defvar *query-cache* nil)
 
@@ -593,6 +594,36 @@
             transactiontype = 'core:comment' order by rt.datecreated"
     (differential-revision-phid rev)))))
 
+(defun add-author-to-differential-action (action)
+ (append
+  action
+  (list :author (get-user (differential-action-authorphid action)))))
+
+(defun get-revision-actions (rev)
+ (mapcar
+  #'add-author-to-differential-action
+  (query
+   (format nil
+    "select
+        id, authorphid, datecreated,
+        case
+          when transactionType = 'differential:action' then
+            substring(newvalue from 2 for length(newvalue)-2)
+          else
+            substring(transactionType from 23)
+        end as newvalue
+     from phabricator_differential.differential_transaction
+     where objectphid = '~A' and
+           transactiontype in (
+             'differential:action',
+             'differential.revision.abandon',
+             'differential.revision.close',
+             'differential.revision.accept',
+             'differential.revision.reject'
+           )
+     order by datecreated"
+    (differential-revision-phid rev)))))
+
 (defun get-revision-inline-comments (rev)
  (let*
   ((phid (differential-revision-phid rev))
@@ -719,6 +750,7 @@
       rev
       (list :author (get-user (differential-revision-authorphid rev)))
       (list :comments (get-revision-comments rev))
+      (list :actions (get-revision-actions rev))
       (multiple-value-bind (commits unattached-comments) (get-revision-commits rev)
        (let
         ((comments-to-attach
@@ -837,6 +869,19 @@
   :author (convert-user-to-core (differential-comment-author comment))
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
 
+(defun convert-differential-action-newvalue-to-core (newvalue)
+  (cond ((equalp newvalue "close") :close)
+        ((equalp newvalue "accept") :accept)
+        ((equalp newvalue "reject") :reject)
+        ((equalp newvalue "abandon") :abandon)
+        (t :unknown)))
+
+(defun convert-differential-action-to-core (action)
+  (forgerie-core:make-merge-request-action
+   :author (convert-user-to-core (differential-action-author action))
+   :date (unix-to-universal-time (differential-action-datecreated action))
+   :type (convert-differential-action-newvalue-to-core (differential-action-newvalue action))))
+
 (defun convert-revision-to-core (revision-def)
  (let
   ((type
@@ -873,7 +918,8 @@
     :commit (convert-commit-to-core (car (repository-commit-parents (car (differential-revision-related-commits revision-def))))))
    :changes (mapcar #'convert-change-to-core (differential-revision-related-commits revision-def))
    :other-change-comments (mapcar #'convert-change-comment-to-core (differential-revision-change-comments revision-def))
-   :notes (mapcar #'convert-differential-comment-to-core (differential-revision-comments revision-def)))))
+   :notes (mapcar #'convert-differential-comment-to-core (differential-revision-comments revision-def))
+   :actions (mapcar #'convert-differential-action-to-core (differential-revision-actions revision-def)))))
 
 (defun convert-repository-to-core (repository-def)
  (forgerie-core:make-vc-repository

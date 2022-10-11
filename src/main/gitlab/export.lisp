@@ -759,6 +759,53 @@
          (t (error e))))))))
    (forgerie-core:merge-request-change-comments change))))
 
+(defun record-mr-action (gl-mr forgerie-mr action)
+ (flet ((update-last-mr-event ()
+          (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
+          (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
+          (rails-command "ev = mr.events[-1]")
+          (rails-command "ev.created_at = action_time")
+          (rails-command "ev.updated_at = action_time")
+          (rails-command "ev.save"))
+        (update-last-mr-rse ()
+          (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
+          (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
+          (rails-command "rse = mr.resource_state_events[-1]")
+          (rails-command "rse.created_at = action_time")
+          (rails-command "rse.save"))
+        (update-mr-updated-at ()
+          (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
+          (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
+          (rails-command "mr.updated_at = action_time")
+          (rails-command "mr.save")
+          (rails-command "mr.metrics.updated_at = action_time")
+          (rails-command "mr.metrics.latest_closed_at = action_time")
+          (rails-command "mr.metrics.save")))
+   (let* ((action-type (forgerie-core:merge-request-action-type action))
+          (action-text (case action-type (:abandon "abandoned") (:close "merged"))))
+     (case action-type
+     ((:abandon :close)
+      ;; Write a synthetic note explaining why the MR is closed
+      (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid)
+                   (forgerie-core:make-note
+                    :id (format nil "D~A-synthetic-~A-at-~A"
+                         (forgerie-core:merge-request-id forgerie-mr)
+                         action-text
+                         (forgerie-core:merge-request-action-date action))
+                    :author (forgerie-core:merge-request-action-author action)
+                    :date (forgerie-core:merge-request-action-date action)
+                    :text (list (format nil "Merge request was ~A" action-text))))
+
+      ;; Close the MR
+      (put-request
+       (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
+       '(("state_event" . "close"))
+       :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-action-author action))))
+      (update-last-mr-event)
+      (update-last-mr-rse)
+      (update-mr-updated-at))
+     ))))
+
 (defun create-merge-request (mr)
  (single-project-check
   (forgerie-core:vc-repository-name (forgerie-core:merge-request-vc-repository mr))
@@ -832,10 +879,11 @@
       (lambda (change)
        (create-change-comments gl-mr change))
       (forgerie-core:merge-request-changes mr))
+     (mapcar
+      (lambda (action)
+       (record-mr-action gl-mr mr action))
+      (forgerie-core:merge-request-actions mr))
      (when (eql :closed (forgerie-core:merge-request-type mr))
-      (put-request
-       (format nil "projects/~A/merge_requests/~A" (getf project :id) (getf gl-mr :iid))
-       '(("state_event" . "close")))
       (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
       (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
      (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr)))))))))
