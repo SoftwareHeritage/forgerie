@@ -2,4 +2,4 @@
  (:export
   #:*private-token* #:*server-address* #:*default-project* #:*ssh-public-key*
   #:*default-group* #:*group-structure* #:*single-project* #:*rails-command* #:*rails-command-args*
-  #:*merge-request-suffix* #:*ticket-suffix* #:*limit-to-active-users*))
+  #:*namespace-for-repo* #:*merge-request-suffix* #:*ticket-suffix* #:*limit-to-active-users*))

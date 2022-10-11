@@ -374,22 +374,25 @@
        (apply #'append
         (mapcar #'forgerie-core:project-tags (forgerie-core:vc-repository-projects vc-repository)))
        :test #'string=))
+     (namespace-path (namespace-for-repo vc-repository))
+     (namespace-id
+      (cond
+       (namespace-path
+        (mapped-item-id (find-mapped-item :group namespace-path)))
+       (*default-group*
+        (mapped-item-id (find-mapped-item :group :default-group)))))
      (gl-project
       (post-request
        "projects"
-       (append
-        (when *default-group*
-         (list
-          (cons
-           "namespace_id"
-           (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
        `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
          ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
          ("tag_list" . ,(format nil "~{~A~^,~}" tags))
          ("issues_access_level" . "enabled")
          ("visibility" . ,(if (forgerie-core:vc-repository-private vc-repository) "private" "public"))
-         ("merge_requests_access_level" . "enabled")))))
-     (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
+         ("merge_requests_access_level" . "enabled")
+         ("auto_devops_enabled" . "false")
+         ("namespace_id" . ,namespace-id))))
+    (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
     (when
      (getf gl-project :empty_repo)
       (when (not (probe-file working-path))

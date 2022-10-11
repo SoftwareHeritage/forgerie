@@ -94,6 +94,11 @@
   (funcall *ticket-suffix* ticket)
   ""))
 
+(defun namespace-for-repo (repository)
+ (if
+  *namespace-for-repo*
+  (funcall *namespace-for-repo* repository)))
+
 (defun to-iso-8601 (d)
  (multiple-value-bind (sec min hr date month year) (decode-universal-time d 0)
   (format nil "~A-~2,,,'0@A-~2,,,'0@AT~2,,,'0@A:~2,,,'0@A:~2,,,'0@AZ" year month date hr min sec)))
