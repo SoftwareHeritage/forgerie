@@ -166,19 +166,30 @@
 (defun create-default-project ()
  (when *default-project*
   (when-unmapped-with-update (:project :default-project)
-   (post-request
-    "projects"
-    (append
-     (when *default-group*
-      (list
-       (cons
-        "namespace_id"
-        (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
-     `(("name" . ,(getf *default-project* :name))
-       ("issues_access_level" . "enabled")
-       ("snippets_access_level" . "enabled")
-       ("visibility" . "public")
-       ("path" . ,(getf *default-project* :path))))))))
+   (let
+    ((project-on-gitlab
+      (handler-case
+       (get-request (format nil "projects/~A"
+                     (quri:url-encode (format nil "~A/~A"
+                                       (getf *default-group* :path)
+                                       (getf *default-project* :path)))))
+       (http-error (e) nil))))
+    (or
+     project-on-gitlab
+     (post-request
+      "projects"
+      (append
+       (when *default-group*
+        (list
+         (cons
+          "namespace_id"
+          (princ-to-string (getf (first (get-request "namespaces" :parameters `(("search" . ,(getf *default-group* :name))))) :id)))))
+       `(("name" . ,(getf *default-project* :name))
+         ("issues_access_level" . "enabled")
+         ("snippets_access_level" . "enabled")
+         ("auto_devops_enabled" . "false")
+         ("visibility" . "public")
+         ("path" . ,(getf *default-project* :path))))))))))
 
 (defun default-group ()
  (when *default-group*
@@ -189,40 +200,69 @@
 (defun create-default-group ()
  (when *default-group*
   (when-unmapped-with-update (:group :default-group)
-   (post-request
-    "groups"
-    `(("name" . ,(getf *default-group* :name))
-      ("path" . ,(getf *default-group* :path))
-      ("visibility" . "public"))))))
+   (let
+    ((group-on-gitlab
+      (handler-case
+       (get-request (format nil "groups/~A" (quri:url-encode (getf *default-group* :path))))
+       (http-error (e) nil))))
+    (or
+     group-on-gitlab
+     (post-request
+      "groups"
+      `(("name" . ,(getf *default-group* :name))
+        ("path" . ,(getf *default-group* :path))
+        ("visibility" . "public"))))))))
 
 (defun create-groups ()
-  (when *group-structure*
-    (mapcar
-     (lambda (group)
-       (let
-           ((parent-group-id (if (getf group :parent)
-                                 (mapped-item-id (find-mapped-item :group (getf group :parent)))))
-            (full-path
-              (if (getf group :parent)
-                  (concatenate 'string (getf group :parent) "/" (getf group :path))
-                  (getf group :path))))
-         (when-unmapped-with-update (:group full-path)
-                                    (post-request
-                                     "groups"
-                                     `(("name" . ,(getf group :name))
-                                       ("path" . ,(getf group :path))
-                                       ("parent_id" . ,parent-group-id)  ;; This works fine even if parent-group-id is nil
-                                       ("visibility" . "public"))))))
-     *group-structure*)))
+ (when *group-structure*
+  (mapcar
+   (lambda (group)
+    (let*
+     ((parent-group-id
+       (if (getf group :parent)
+        (mapped-item-id (find-mapped-item :group (getf group :parent)))))
+      (full-path
+       (if (getf group :parent)
+        (concatenate 'string (getf group :parent) "/" (getf group :path))
+        (getf group :path))))
+     (when-unmapped-with-update (:group full-path)
+      (let
+       ((group-on-gitlab
+         (handler-case
+          (get-request (format nil "groups/~A" (quri:url-encode full-path)))
+          (http-error (e) nil))))
+       (or
+        group-on-gitlab
+        (post-request
+         "groups"
+         `(("name" . ,(getf group :name))
+           ("path" . ,(getf group :path))
+           ("parent_id" . ,parent-group-id) ;; This works fine even if parent-group-id is nil
+           ("visibility" . "public"))))))))
+   *group-structure*)))
+
+(defun normalize-pubkey (pubkeystr)
+ "Compare ssh keys using algo and hash (first two words), ignoring key title"
+ (let ((split (uiop:split-string pubkeystr)))
+  (uiop:reduce/strcat (subseq split 0 2))))
+
+(defun gitlab-key-matches (key)
+ (string=
+  (normalize-pubkey *ssh-public-key*)
+  (normalize-pubkey (getf key :key))))
 
 (defun add-ssh-key ()
- (let
-  ((key-name "Forgerie Export Key"))
-  (when-unmapped-with-update (:forgerie-key :main-key)
-   (post-request
-    "user/keys"
-    `(("title" . ,key-name)
-      ("key" . ,*ssh-public-key*))))))
+ (when-unmapped-with-update (:forgerie-key :main-key)
+  (let*
+   ((key-name (format nil "Forgerie Export Key ~a" (local-time:now)))
+    (known-keys (get-request "user/keys"))
+    (key-found (find-if #'gitlab-key-matches known-keys)))
+   (if key-found
+    key-found
+    (post-request
+     "user/keys"
+     `(("title" . ,key-name)
+       ("key" . ,*ssh-public-key*)))))))
 
 (defun project-for-ticket (ticket vc-repositories)
  (let
@@ -381,24 +421,30 @@
         (mapped-item-id (find-mapped-item :group namespace-path)))
        (*default-group*
         (mapped-item-id (find-mapped-item :group :default-group)))))
+     (gl-project-path (format nil "~A/~A" (or namespace-path (getf *default-group* :path)) (forgerie-core:vc-repository-slug vc-repository)))
+     (gl-project-get (handler-case
+                      (get-request (format nil "projects/~A" (quri:url-encode gl-project-path)))
+                      (http-error (e) nil)))
      (gl-project
-      (post-request
-       "projects"
-       `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
-         ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
-         ("tag_list" . ,(format nil "~{~A~^,~}" tags))
-         ("issues_access_level" . "enabled")
-         ("visibility" . ,(if (forgerie-core:vc-repository-private vc-repository) "private" "public"))
-         ("merge_requests_access_level" . "enabled")
-         ("auto_devops_enabled" . "false")
-         ("namespace_id" . ,namespace-id))))
-    (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
+      (or
+       gl-project-get
+       (post-request
+        "projects"
+        `(("name" . ,(forgerie-core:vc-repository-name vc-repository))
+          ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
+          ("tag_list" . ,(format nil "~{~A~^,~}" tags))
+          ("issues_access_level" . "enabled")
+          ("visibility" . ,(if (forgerie-core:vc-repository-private vc-repository) "private" "public"))
+          ("merge_requests_access_level" . "enabled")
+          ("auto_devops_enabled" . "false")
+          ("namespace_id" . ,namespace-id)))))
+     (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
     (when
      (getf gl-project :empty_repo)
-      (when (not (probe-file working-path))
-        (ensure-directories-exist working-path)
-        (git-cmd gl-project "clone" "--mirror" (forgerie-core:vc-repository-git-location vc-repository) ".")
-        (git-cmd gl-project "remote" "add" "gitlab" (getf gl-project :ssh_url_to_repo)))
+     (when (not (probe-file working-path))
+      (ensure-directories-exist working-path)
+      (git-cmd gl-project "clone" "--mirror" (forgerie-core:vc-repository-git-location vc-repository) ".")
+      (git-cmd gl-project "remote" "add" "gitlab" (getf gl-project :ssh_url_to_repo)))
      (git-cmd gl-project "remote" "set-url" "gitlab" (getf gl-project :ssh_url_to_repo))
      (git-cmd gl-project "push" "gitlab" "--all")
      (git-cmd gl-project "push" "gitlab" "--tags")
@@ -551,56 +597,66 @@
 
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))
-  (let*
-   ((avatar (forgerie-core:user-avatar user))
-    (avatar
-     (when avatar
-      (if (> (* 1024 200) (forgerie-core:file-size avatar))
-       avatar
+  (let
+   ((user-on-gitlab
+     (first (get-request "users"
+             :parameters
+             `(("username" . ,(forgerie-core:user-username user)))))))
+   (or
+    ;; user exists
+    user-on-gitlab
+
+    ;; create user, handling avatar + emails
+    (let*
+     ((avatar (forgerie-core:user-avatar user))
+      (avatar
+       (when avatar
+        (if (> (* 1024 200) (forgerie-core:file-size avatar))
+         avatar
+         (progn
+          (forgerie-core:add-mapping-error
+           :user-avatar-too-big
+           (forgerie-core:user-username user)
+           (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (forgerie-core:file-size avatar)))))))
+      (avatar-filename
+       (when avatar
+        (if
+         (find-if
+          (lambda (ext) (cl-ppcre:scan (format nil "~A$" ext) (forgerie-core:file-name avatar)))
+          (list "png" "jpg" "jpeg" "gif" "bmp" "tiff" "ico" "webp"))
+         (forgerie-core:file-name avatar)
+         (format nil "~A.~A" (forgerie-core:file-name avatar)
+          (cond
+           ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
+           (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
+      (avatar-filepath-with-mimetype
+       (when avatar-filename
+        (format nil "~A.~A"
+         (forgerie-core:file-location avatar)
+         (subseq (forgerie-core:file-mimetype avatar) 6))))
+      (gl-user
        (progn
-        (forgerie-core:add-mapping-error
-         :user-avatar-too-big
-         (forgerie-core:user-username user)
-         (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (forgerie-core:file-size avatar)))))))
-    (avatar-filename
-     (when avatar
-      (if
-       (find-if
-        (lambda (ext) (cl-ppcre:scan (format nil "~A$" ext) (forgerie-core:file-name avatar)))
-        (list "png" "jpg" "jpeg" "gif" "bmp" "tiff" "ico" "webp"))
-       (forgerie-core:file-name avatar)
-       (format nil "~A.~A" (forgerie-core:file-name avatar)
-        (cond
-         ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
-         (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
-    (avatar-filepath-with-mimetype
-     (when avatar-filename
-       (format nil "~A.~A"
-               (forgerie-core:file-location avatar)
-               (subseq (forgerie-core:file-mimetype avatar) 6))))
-    (gl-user
-     (progn
-       (when avatar-filepath-with-mimetype
+        (when avatar-filepath-with-mimetype
          (uiop:copy-file (forgerie-core:file-location avatar) avatar-filepath-with-mimetype))
-       ;; using the new make-request implementation (dexador) does not work
-       ;; so use the previous slower implementation which works
-       (post-request
-        "users"
-        `(("name" . ,(forgerie-core:user-name user))
-          ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
+        ;; using the new make-request implementation (dexador) does not work
+        ;; so use the previous slower implementation which works
+        (post-request
+         "users"
+         `(("name" . ,(forgerie-core:user-name user))
+           ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
                                         ; Everyone must be an admin to make some of the other import things work correctly
                                         ; and then admin must be removed after
-          ("admin" . "true")
-          ("reset_password" . "true")
-          ("username" . ,(forgerie-core:user-username user))
-          ,@(when avatar-filepath-with-mimetype
+           ("admin" . "true")
+           ("reset_password" . "true")
+           ("username" . ,(forgerie-core:user-username user))
+           ,@(when avatar-filepath-with-mimetype
               `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
-   (mapcar
-    (lambda (email)
-     (post-request (format nil "/users/~A/emails" (getf gl-user :id))
-      `(("email" . ,(forgerie-core:email-address email)))))
-    (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
-   gl-user)))
+     (mapcar
+      (lambda (email)
+       (post-request (format nil "/users/~A/emails" (getf gl-user :id))
+        `(("email" . ,(forgerie-core:email-address email)))))
+      (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
+     gl-user)))))
 
 (defun update-user-admin-status (user &optional override)
  (when
