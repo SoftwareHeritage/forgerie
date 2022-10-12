@@ -451,11 +451,11 @@
      (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
      (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project))))))
 
-(defun update-event-date (obj-type obj-id new-date &key wait)
+(defun update-event-date (obj-type obj-id new-date &key extra-filter)
  (let
   ((find-ev-command
-    (format nil "ev = Event.where(:target => ~A, :target_type => '~A').order_by(:created_at => 'DESC').first"
-     obj-id obj-type)))
+    (format nil "ev = Event.where(:target => ~A, :target_type => '~A')~@[~A~].order_by(:created_at => 'DESC').first"
+     obj-id obj-type extra-filter)))
   (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date)))
   (rails-command (format nil "~A; begin sleep(0.1); ~A end while !ev" find-ev-command find-ev-command))
   (rails-command "ev.created_at = action_time")
@@ -776,7 +776,10 @@
 
 (defun record-mr-action (gl-mr forgerie-mr action)
  (flet ((update-last-mr-event ()
-         (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-action-date action)))
+         (update-event-date "MergeRequest"
+          (getf gl-mr :id)
+          (forgerie-core:merge-request-action-date action)
+          :extra-filter ".where(:action => \"closed\")"))
         (update-last-mr-rse ()
           (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
           (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
