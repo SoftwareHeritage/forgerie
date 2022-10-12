@@ -939,7 +939,7 @@
           (let
            ((content
              (with-open-file (str (forgerie-core:file-location file) :element-type 'unsigned-byte)
-              (let ((seq (make-sequence 'vector (file-length str)))) (read-sequence seq str) (map 'string #'code-char seq)))))
+              (let ((seq (make-sequence 'vector (file-length str)))) (read-sequence seq str) (trivial-utf-8:utf-8-bytes-to-string seq)))))
            (post-request
             (format nil "/projects/~A/snippets" (getf default-project :id))
             ; This is deprecated, but it's an easier interface for now.  Someday we may have
