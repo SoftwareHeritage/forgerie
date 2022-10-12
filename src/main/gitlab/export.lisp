@@ -893,6 +893,7 @@
    (when *notes-mode*
     (let
      ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
+     (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
      (rails-command (format nil "creation_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
      (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
      (rails-command "mr.created_at = creation_time")
