@@ -457,8 +457,7 @@
     (format nil "ev = Event.where(:target => ~A, :target_type => '~A').order_by(:created_at => 'DESC').first"
      obj-id obj-type)))
   (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date)))
-  (rails-command "sleep(0.5)")
-  (rails-command find-ev-command)
+  (rails-command (format nil "~A; begin sleep(0.1); ~A end while !ev" find-ev-command find-ev-command))
   (rails-command "ev.created_at = action_time")
   (rails-command "ev.updated_at = action_time")
   (rails-command "ev.save")))
@@ -514,7 +513,7 @@
          `(("body" . ,note-text)
            ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
          :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:note-author note))))))
-      (update-event-date "Note" (getf created-note :id) (forgerie-core:note-date note) :wait t)
+      (update-event-date "Note" (getf created-note :id) (forgerie-core:note-date note))
       created-note))))))
 
 (defun create-file (file-id project-id)
