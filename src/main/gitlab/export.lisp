@@ -753,17 +753,28 @@
              ("body" . ,note-text)
              ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
            :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-change-comment-author comment))))))
+        (when (first (getf discussion :notes))
+         (update-event-date
+          "DiffNote"
+          (getf (first (getf discussion :notes)) :id)  ;; get the id of the first note in the discussion, created by the previous post-request
+          (forgerie-core:merge-request-change-comment-date comment)))
         (mapcar
          (lambda (comment)
           (let
            ((note-text (process-note-text (forgerie-core:merge-request-change-comment-text comment) (getf gl-mr :project_id))))
            (when
             (and note-text (not (zerop (length note-text))))
-            (post-request
-             (format nil "/projects/~A/merge_requests/~A/discussions/~A/notes" (getf gl-mr :project_id) (getf gl-mr :iid) (getf discussion :id))
-             `(("body" . ,note-text)
-               ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
-             :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-change-comment-author comment)))))))
+            (let
+             ((diff-note
+               (post-request
+                (format nil "/projects/~A/merge_requests/~A/discussions/~A/notes" (getf gl-mr :project_id) (getf gl-mr :iid) (getf discussion :id))
+                `(("body" . ,note-text)
+                  ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
+                :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-change-comment-author comment))))))
+             (update-event-date
+              "DiffNote"
+              (getf diff-note :id)
+              (forgerie-core:merge-request-change-comment-date comment))))))
          (forgerie-core:merge-request-change-comment-replies comment)))
        (http-error (e)
         (cond
