@@ -66,8 +66,9 @@
  (cl-mysql:query "set names 'utf8'"))
 
 (defun sanitize-address (address)
- (when *email-address-sanitizer*
-  (funcall *email-address-sanitizer* address)))
+ (if *email-address-sanitizer*
+  (funcall *email-address-sanitizer* address)
+   address))
 
 (defun user-primary-email (user)
  (find 1 (user-emails user) :key #'email-isprimary))
