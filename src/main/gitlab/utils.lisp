@@ -27,7 +27,7 @@
    (mapcar #'convert-js-to-plist jsown))
   (t (error "Don't know how to handle ~S" jsown))))
 
-(defun make-request (path method parameters &key sudo)
+(defun make-request (path method parameters &key sudo headers)
  (let
   ((parameters
     (append
@@ -37,7 +37,7 @@
    (multiple-value-bind
     (body code headers uri stream)
     (dex:request (format nil "~A/api/v4/~A" *server-address* path) :method method :content parameters
-                 :headers (list (cons "PRIVATE-TOKEN" *private-token*)))
+                 :headers `(("PRIVATE-TOKEN" . ,*private-token*) ,@headers))
     (when
      (not (= 304 code)) ; 304s are empty, and can be ignored
      (let
@@ -70,17 +70,17 @@
  (forgerie-core:git-cmd
   (format nil "~A~A" *working-directory* (getf project :path)) cmd args :error nil))
 
-(defun get-request (path &key parameters sudo)
- (make-request path :get parameters :sudo sudo))
+(defun get-request (path &key parameters sudo headers)
+ (make-request path :get parameters :sudo sudo :headers headers))
 
-(defun post-request (path parameters &key sudo)
- (make-request path :post parameters :sudo sudo))
+(defun post-request (path parameters &key sudo headers)
+ (make-request path :post parameters :sudo sudo :headers headers))
 
-(defun delete-request (path)
- (make-request path :delete nil))
+(defun delete-request (path &key headers)
+ (make-request path :delete nil :headers headers))
 
-(defun put-request (path parameters &key sudo)
- (make-request path :put parameters :sudo sudo))
+(defun put-request (path parameters &key sudo headers)
+ (make-request path :put parameters :sudo sudo :headers headers))
 
 (defun merge-request-suffix (mr)
  (if
