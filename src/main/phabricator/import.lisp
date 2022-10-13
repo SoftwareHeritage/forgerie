@@ -65,6 +65,9 @@
   (cl-mysql:connect :user *database-username* :password *database-password*))
  (cl-mysql:query "set names 'utf8mb4'"))
 
+(defun utf-8-bytes-to-string (bytes-list)
+ (trivial-utf-8:utf-8-bytes-to-string (or bytes-list #())))
+
 (defun sanitize-address (address)
  (if *email-address-sanitizer*
   (funcall *email-address-sanitizer* address)
@@ -853,8 +856,8 @@
     (differential-transaction-comment-linenumber comment)
     (+ (differential-transaction-comment-linenumber comment) (differential-transaction-comment-linelength comment))))
   :date (unix-to-universal-time (differential-transaction-comment-datecreated comment))
-  :file (trivial-utf-8:utf-8-bytes-to-string (differential-diff-filename (differential-transaction-comment-diff comment)))
-  :text (parse-comment (trivial-utf-8:utf-8-bytes-to-string (differential-transaction-comment-content comment)))
+  :file (utf-8-bytes-to-string (differential-diff-filename (differential-transaction-comment-diff comment)))
+  :text (parse-comment (utf-8-bytes-to-string (differential-transaction-comment-content comment)))
   :author (convert-user-to-core (differential-transaction-comment-author comment))
   :replies (mapcar #'convert-change-comment-to-core (differential-transaction-comment-replies comment))))
 
@@ -866,7 +869,7 @@
 (defun convert-differential-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "D~A" (differential-comment-id comment))
-  :text (parse-comment (trivial-utf-8:utf-8-bytes-to-string (differential-comment-content comment)))
+  :text (parse-comment (utf-8-bytes-to-string (differential-comment-content comment)))
   :author (convert-user-to-core (differential-comment-author comment))
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
 
@@ -899,9 +902,9 @@
    :description
    (parse-comment
     (format nil "~A~A"
-     (trivial-utf-8:utf-8-bytes-to-string (differential-revision-summary revision-def))
+     (utf-8-bytes-to-string (differential-revision-summary revision-def))
      (if (differential-revision-testplan revision-def)
-      (format nil "~%~%== Test Plan ==~%~%~A" (trivial-utf-8:utf-8-bytes-to-string (differential-revision-testplan revision-def)))
+      (format nil "~%~%== Test Plan ==~%~%~A" (utf-8-bytes-to-string (differential-revision-testplan revision-def)))
       "")))
    :author (convert-user-to-core (differential-revision-author revision-def))
    :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
@@ -954,7 +957,7 @@
 (defun convert-task-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "T~A" (task-comment-id comment))
-  :text (parse-comment (trivial-utf-8:utf-8-bytes-to-string (task-comment-content comment)))
+  :text (parse-comment (utf-8-bytes-to-string (task-comment-content comment)))
   :author (convert-user-to-core (task-comment-author comment))
   :date (unix-to-universal-time (task-comment-datecreated comment))))
 
@@ -972,7 +975,7 @@
    :title (task-title task-def)
    :author (convert-user-to-core (task-author task-def))
    :assignee (convert-user-to-core (task-owner task-def))
-   :description (parse-comment (trivial-utf-8:utf-8-bytes-to-string (task-description task-def)))
+   :description (parse-comment (utf-8-bytes-to-string (task-description task-def)))
    :projects (mapcar #'convert-project-to-core (task-projects task-def))
    :date (unix-to-universal-time (task-datecreated task-def))
    :confidential (not (not (find (task-spacephid task-def) *confidential-space-phids* :test #'string=)))
@@ -992,7 +995,7 @@
 (defun convert-paste-comment-to-core (comment)
  (forgerie-core:make-note
   :id (format nil "P~A" (paste-comment-id comment))
-  :text (parse-comment (trivial-utf-8:utf-8-bytes-to-string (paste-comment-content comment)))
+  :text (parse-comment (utf-8-bytes-to-string (paste-comment-content comment)))
   :author (convert-user-to-core (paste-comment-author comment))
   :date (unix-to-universal-time (paste-comment-datecreated comment))))
 
