@@ -554,18 +554,34 @@
       (update-event-date "Note" (getf created-note :id) (forgerie-core:note-date note))
       created-note))))))
 
+(defvar *file-transfer-temporary-dir* nil)
+
 (defun create-file (file-id project-id)
  (let
   ((file (find (parse-integer file-id) *files-to-upload* :key #'forgerie-core:file-id)))
   (when (not file)
    (error (format nil "Couldn't find file to upload with id ~S" (parse-integer file-id))))
-  (when-unmapped (:file-upoaded (forgerie-core:file-id file))
-   (update-file-mapping (:file-upoaded (forgerie-core:file-id file))
-     (post-request
-      (format nil "projects/~A/uploads" project-id)
-      `(("file" . ,(pathname (forgerie-core:file-location file)))
-        ("filename" . ,(quri:url-encode (forgerie-core:file-name file)))))))
-  (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
+  (when-unmapped (:file-uploaded (forgerie-core:file-id file))
+   (update-file-mapping (:file-uploaded (forgerie-core:file-id file))
+   (progn
+    (unless *file-transfer-temporary-dir*
+     (setf *file-transfer-temporary-dir*
+      (format nil "~A_file-upload-tmp/" forgerie-core:*working-directory*))
+     (ensure-directories-exist *file-transfer-temporary-dir*))
+    (let
+     ((link-path
+       (pathname
+        (format nil "~A~A"
+         *file-transfer-temporary-dir*
+         (forgerie-core:file-name file)))))
+     (unwind-protect
+      (progn
+       (sb-posix:link (pathname (forgerie-core:file-location file)) link-path)
+       (post-request
+        (format nil "projects/~A/uploads" project-id)
+        `(("file" . ,link-path))))
+      (ignore-errors (delete-file link-path)))))))
+  (retrieve-mapping :file-uploaded (forgerie-core:file-id file))))
 
 (defun format-labels-for-post (issue-labels)
  (format nil "~{~A~^,~}"
