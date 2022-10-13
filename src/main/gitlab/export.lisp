@@ -666,13 +666,15 @@
                                         ; and then admin must be removed after
            ("admin" . "true")
            ("reset_password" . "true")
+           ("skip_confirmation" . "true")
            ("username" . ,(forgerie-core:user-username user))
            ,@(when avatar-filepath-with-mimetype
               `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
      (mapcar
       (lambda (email)
        (post-request (format nil "/users/~A/emails" (getf gl-user :id))
-        `(("email" . ,(forgerie-core:email-address email)))))
+        `(("email" . ,(forgerie-core:email-address email))
+          ("skip_confirmation" . "true"))))
       (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
      gl-user)))))
 
