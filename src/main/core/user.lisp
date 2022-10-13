@@ -1,6 +1,6 @@
 (in-package #:forgerie-core)
 
-(defstruct email address is-primary)
+(defstruct email address is-primary is-verified)
 
 (defstruct user
  username

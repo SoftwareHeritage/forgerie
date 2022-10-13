@@ -749,6 +749,9 @@
  (when (and *limit-to-active-users* (validate-user user)) (create-user user))
  user)
 
+(defun email-verified-to-string (email)
+ (if (forgerie-core:email-is-verified email) "true" "false"))
+
 (defun create-user (user)
  (when-unmapped-with-update (:user (forgerie-core:user-username user))
   (let
@@ -805,7 +808,7 @@
                                         ; and then admin must be removed after
            ("admin" . "true")
            ("reset_password" . "true")
-           ("skip_confirmation" . "true")
+           ("skip_confirmation" . ,(email-verified-to-string (forgerie-core:user-primary-email user)))
            ("username" . ,(forgerie-core:user-username user))
            ,@(when avatar-filepath-with-mimetype
               `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
@@ -813,7 +816,7 @@
       (lambda (email)
        (post-request (format nil "/users/~A/emails" (getf gl-user :id))
         `(("email" . ,(forgerie-core:email-address email))
-          ("skip_confirmation" . "true"))))
+          ("skip_confirmation" . ,(email-verified-to-string email)))))
       (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
      gl-user)))))
 

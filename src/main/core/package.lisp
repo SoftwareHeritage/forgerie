@@ -16,8 +16,8 @@
   #:make-note #:note-text #:note-author #:note-date #:note-id #:note
 
   ; user.lisp
-  #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:user-primary-email
-  #:user-admin #:user-avatar
+  #:make-user #:user-username #:user-name #:user-emails #:make-email #:email-address #:email-is-primary #:email-is-verified
+  #:user-primary-email #:user-admin #:user-avatar
 
   ; project.lisp
   #:make-project #:project-name #:project-tags

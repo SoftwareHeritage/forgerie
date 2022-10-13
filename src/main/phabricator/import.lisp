@@ -12,7 +12,7 @@
 
 (getf-convenience differential-diff id)
 (getf-convenience edge dst)
-(getf-convenience email address isprimary)
+(getf-convenience email address isprimary isverified)
 (getf-convenience file id storageengine storageformat storagehandle name location mimetype bytesize phid)
 (getf-convenience file-storageblob data)
 (getf-convenience paste id phid title filephid file comments author authorphid datecreated spacephid)
@@ -984,7 +984,8 @@
 (defun convert-email-to-core (email-def)
  (forgerie-core:make-email
   :address (sanitize-address (email-address email-def))
-  :is-primary (eql (email-isprimary email-def) 1)))
+  :is-primary (eql (email-isprimary email-def) 1)
+  :is-verified (eql (email-isverified email-def) 1)))
 
 (defun convert-user-to-core (user-def)
  (when user-def
