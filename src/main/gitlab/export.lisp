@@ -542,6 +542,93 @@
         ("filename" . ,(quri:url-encode (forgerie-core:file-name file)))))))
   (retrieve-mapping :file-upoaded (forgerie-core:file-id file))))
 
+(defun format-labels-for-post (issue-labels)
+ (format nil "~{~A~^,~}"
+  (remove-if
+   (lambda (label)
+    (find label '("state:open" "state:resolved") :test #'string=))
+   issue-labels)))
+
+(defvar *ticket-labels-map* nil)
+(defvar *ticket-state-map* nil)
+
+(defun create-ticket-action (gl-ticket vc-ticket action)
+ (let*
+  ((action-type
+    (forgerie-core:ticket-action-type action))
+   (new-value
+    (forgerie-core:ticket-action-newvalue action))
+   (author-username
+    (forgerie-core:user-username (ensure-user-created (forgerie-core:ticket-action-author action))))
+   (action-date-str (to-iso-8601 (forgerie-core:ticket-action-date action)))
+   (ticket-map-id (getf gl-ticket :id))
+   (known-state (or (cdr (assoc ticket-map-id *ticket-state-map*)) (getf gl-ticket :state)))
+   (known-labels (or (cdr (assoc ticket-map-id *ticket-labels-map*)) (getf gl-ticket :labels)))
+   (ticket-changes
+    (case action-type
+     (:open
+      (let*
+       ((state-label
+         (format nil "state:~A" new-value))
+        (new-labels
+         (cons
+          state-label
+          (remove-if
+           (lambda (label) (str:starts-with? "state:" label))
+           known-labels))))
+       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
+       `(("labels" . ,(format-labels-for-post new-labels))
+         ,@(when (string= known-state "closed")
+            (setf *ticket-state-map* (acons ticket-map-id "opened" *ticket-state-map*))
+            '(("state_event" . "reopen"))))))
+     (:closed
+      (let*
+       ((state-label
+         (format nil "state:~A" new-value))
+        (new-labels
+         (cons
+          state-label
+          (remove-if
+           (lambda (label) (str:starts-with? "state:" label))
+           known-labels))))
+       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
+       `(("labels" . ,(format-labels-for-post new-labels))
+         ,@(when (string= known-state "opened")
+            (setf *ticket-state-map* (acons ticket-map-id "closed" *ticket-state-map*))
+            '(("state_event" . "close"))))))
+     (:title
+      `(("title" . ,new-value)))
+     (:description
+      `(("description" . ,(process-note-text
+                           (append new-value (list (ticket-suffix vc-ticket)))
+                           (getf gl-ticket :project_id)))))
+     (:priority
+      (let*
+       ((priority-label
+         (format nil "priority:~A" new-value))
+        (new-labels
+         (cons
+          priority-label
+          (remove-if
+           (lambda (label) (str:starts-with? "priority:" label))
+           known-labels))))
+       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
+       `(("labels" . ,(format-labels-for-post new-labels)))))
+     (:reassign
+      (let
+       ((assignee-id
+         (if new-value
+          (getf (retrieve-mapping :user (forgerie-core:user-username (ensure-user-created new-value))) :id))))
+       `(("assignee_ids" . ,(format nil "[~@[~A~]]" assignee-id)))))
+     (:subscribers)
+     (otherwise (error "Unknown ticket action ~A" action-type)))))
+  (when ticket-changes
+   (put-request
+    (format nil "projects/~A/issues/~A" (getf gl-ticket :project_id) (getf gl-ticket :iid))
+    `(("updated_at" . ,action-date-str)
+      ,@ticket-changes)
+    :sudo author-username))))
+
 (defun create-ticket (ticket vc-repositories)
  (single-project-check
   (let
@@ -549,27 +636,63 @@
    (if vc-repos (forgerie-core:vc-repository-name (car vc-repos)) (getf *default-project* :name)))
   (when (project-for-ticket ticket vc-repositories)
    (when-unmapped (:ticket-completed (forgerie-core:ticket-id ticket))
-    (let
-     ((project-id (getf (project-for-ticket ticket vc-repositories) :id)))
+    (let*
+     ((project (project-for-ticket ticket vc-repositories))
+      (project-id (getf project :id))
+      (actions-and-notes
+       (stable-sort
+        (copy-list
+         (append
+          (forgerie-core:ticket-notes ticket)
+          (forgerie-core:ticket-actions ticket)))
+        #'<
+        :key (lambda (action-or-note)
+              (ctypecase action-or-note
+               (forgerie-core:note (forgerie-core:note-date action-or-note))
+               (forgerie-core:ticket-action (forgerie-core:ticket-action-date action-or-note))))))
+      (first-description-action
+       (find-if
+        (lambda (action-or-note)
+         (typecase action-or-note
+          (forgerie-core:ticket-action
+           (equalp (forgerie-core:ticket-action-type action-or-note) :description))))
+        actions-and-notes))
+      (orig-description
+       (if first-description-action
+        (forgerie-core:ticket-action-newvalue first-description-action)
+        (forgerie-core:ticket-description ticket)))
+      (first-title-action
+       (find-if
+        (lambda (action-or-note)
+         (typecase action-or-note
+          (forgerie-core:ticket-action
+           (equalp (forgerie-core:ticket-action-type action-or-note) :title))))
+        actions-and-notes))
+      (orig-title
+       (if first-title-action
+        (forgerie-core:ticket-action-newvalue first-title-action)
+        (forgerie-core:ticket-title ticket))))
      (when-unmapped (:ticket (forgerie-core:ticket-id ticket))
       (let
        ((gl-ticket
          (post-request
           (format nil "projects/~A/issues" project-id)
           `(("iid" . ,(prin1-to-string (forgerie-core:ticket-id ticket)))
-            ("title" . ,(forgerie-core:ticket-title ticket))
+            ("title" . ,orig-title)
             ("labels" .
-             ,(format nil "~{~A~^,~}"
-               (cons
-                (format nil "priority:~A" (forgerie-core:ticket-priority ticket))
-                (mapcar #'forgerie-core:project-name (forgerie-core:ticket-projects ticket)))))
-          ,@(when (forgerie-core:ticket-assignee ticket)
-             (list (cons "assignee_id" (princ-to-string (getf (retrieve-mapping :user (forgerie-core:user-username (ensure-user-created (forgerie-core:ticket-assignee ticket)))) :id)))))
+             ,(format-labels-for-post
+               (mapcar #'forgerie-core:project-name (forgerie-core:ticket-projects ticket))))
             ("confidential" . ,(if (forgerie-core:ticket-confidential ticket) "true" "false"))
-            ("description" .  ,(process-note-text (append (forgerie-core:ticket-description ticket) (list (ticket-suffix ticket))) project-id))
+            ("description" .  ,(process-note-text (append orig-description (list (ticket-suffix ticket))) project-id))
             ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
           :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:ticket-author ticket))))))
-       (mapcar
+       (when (/= (getf gl-ticket :iid) (forgerie-core:ticket-id ticket))
+        (forgerie-core:add-mapping-error
+         :ticket-iid-not-set
+         (forgerie-core:ticket-id ticket)
+         (format nil "Ticket iid ignored by gitlab for ~A (~A)" (forgerie-core:ticket-id ticket) (getf (getf gl-ticket :references) :full))))
+       (update-event-date "Issue" (getf gl-ticket :id) (forgerie-core:ticket-date ticket))
+       (mapc
         (lambda (u)
          (post-request
           (format nil "projects/~A/issues/~A/subscribe" (getf gl-ticket :project_id) (getf gl-ticket :iid))
@@ -583,14 +706,15 @@
       (not (find-mapped-item :ticket-completed (forgerie-core:ticket-id ticket))))
      (let
       ((gl-ticket (get-request (format nil "projects/~A/issues/~A" project-id (forgerie-core:ticket-id ticket)))))
-      (mapcar
-       (lambda (note)
-        (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) note))
-       (forgerie-core:ticket-notes ticket))
-      (when (eql :closed (forgerie-core:ticket-type ticket))
-       (put-request
-        (format nil "projects/~A/issues/~A" project-id (getf gl-ticket :iid))
-        '(("state_event" . "close"))))
+      (mapc
+       (lambda (action-or-note)
+        (typecase action-or-note
+         (forgerie-core:note
+          (create-note (getf gl-ticket :project_id) "issues" (getf gl-ticket :iid) action-or-note))
+         (forgerie-core:ticket-action
+          (create-ticket-action gl-ticket ticket action-or-note))
+         (t (error "Unknown type"))))
+       actions-and-notes)
       (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket))))))))))
 
 (defun create-ticket-links (ticket vc-repositories)

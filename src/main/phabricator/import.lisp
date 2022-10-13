@@ -21,8 +21,9 @@
 (getf-convenience project-slug slug)
 (getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments git-comment)
-(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers)
+(getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers actions)
 (getf-convenience task-comment id author authorphid content datecreated)
+(getf-convenience task-action id author authorphid datecreated transactiontype newvalue)
 (getf-convenience user id username realname phid emails isadmin profileimage profileimagephid)
 (getf-convenience differential-revision
  id title summary testplan phid status repository repositoryphid datecreated related-commits author authorphid comments change-comments
@@ -135,13 +136,53 @@
             transactiontype = 'core:comment' order by mt.datecreated"
     (task-phid task)))))
 
+(defun fill-out-task-action (action)
+ (let* ((newvalue (utf-8-bytes-to-string (task-action-newvalue action)))
+        (parsed-newvalue (first (jsown:parse (format nil "[~A]" newvalue)))))
+  (append
+   (list :newvalue parsed-newvalue)
+   action
+   (list :author (get-user (task-action-authorphid action))))))
+
+(defun get-task-actions (task)
+ (mapcar
+  #'fill-out-task-action
+  (query
+   (format nil
+    "select
+        id, authorphid, datecreated,
+        case
+          when transactiontype = 'core:subscribers' then 'subscribers'
+          else transactiontype
+        end as transactiontype, newvalue
+        from phabricator_maniphest.maniphest_transaction
+        where objectphid = '~A' and
+            transactiontype in ('title', 'description', 'priority', 'status', 'reassign', 'subscribers', 'core:subscribers') order by datecreated"
+    (task-phid task)))))
+
+(defun annotate-task-action (action)
+ (let
+  ((type
+    (task-action-transactiontype action))
+   (newvalue
+    (task-action-newvalue action)))
+  (cond
+   ((string= type "reassign")
+    (if newvalue
+     (append (list :newvalue (get-user newvalue)) action)
+     action))
+   ((string= type "subscribers")
+    (append (list :newvalue (mapcar #'get-user newvalue)) action))
+   (t action))))
+
 (defun annotate-task (task)
  (append
   task
   (list
    :owner (when (task-ownerphid task) (get-user (task-ownerphid task)))
    :author (when (task-authorphid task) (get-user (task-authorphid task)))
-   :comments (get-task-comments task))
+   :comments (get-task-comments task)
+   :actions (mapcar #'annotate-task-action (get-task-actions task)))
   (list
    :subscribers
    (mapcar
@@ -961,36 +1002,68 @@
   :author (convert-user-to-core (task-comment-author comment))
   :date (unix-to-universal-time (task-comment-datecreated comment))))
 
+(defun task-status-to-type (status)
+ (cond
+  ((find status (list "open" "wip") :test #'string=)
+   :open)
+  ((find status (list "duplicate" "invalid" "resolved" "spite" "wontfix") :test #'string=)
+   :closed)
+  (t (error "Unknown task status: ~A" status))))
+
+(defun task-priority-to-string (priority)
+ (case priority
+  (100 "UnbreakNow!")
+  (90 "Triage")
+  (80 "High")
+  (50 "Normal")
+  (25 "Low")
+  (0 "Wishlist")
+  (otherwise (error "Unknown task priority: ~A" priority))))
+
+(defun convert-task-action-to-core (action)
+ (multiple-value-bind (type newvalue)
+  (let*
+   ((action-type (task-action-transactiontype action))
+    (newvalue (task-action-newvalue action)))
+   (cond
+    ((string= action-type "status")
+     (values (task-status-to-type newvalue) newvalue))
+    ((string= action-type "priority")
+     (values :priority (task-priority-to-string
+                        (typecase newvalue
+                         (integer newvalue)
+                         (t (parse-integer newvalue))))))
+    ((string= action-type "reassign")
+     (values :reassign (if newvalue (convert-user-to-core newvalue))))
+    ((string= action-type "subscribers")
+     (values :subscribers (mapcar #'convert-user-to-core newvalue)))
+    ((string= action-type "description")
+     (values :description (parse-comment newvalue)))
+    (t
+     (values (intern (string-upcase action-type) :keyword) newvalue))))
+  (forgerie-core:make-ticket-action
+   :id (format nil "T~A" (task-action-id action))
+   :author (convert-user-to-core (task-action-author action))
+   :date (unix-to-universal-time (task-action-datecreated action))
+   :type type
+   :newvalue newvalue)))
+
 (defun convert-task-to-core (task-def)
- (let
-  ((type
-    (cond
-     ((find (task-status task-def) (list "open" "wip") :test #'string=)
-      :open)
-     ((find (task-status task-def) (list "duplicate" "invalid" "resolved" "spite" "wontfix") :test #'string=)
-      :closed)
-     (t (error "Unknown revision type: ~A" (differential-revision-status revision-def))))))
-  (forgerie-core:make-ticket
-   :id (task-id task-def)
-   :title (task-title task-def)
+ (forgerie-core:make-ticket
+  :id (task-id task-def)
+  :title (task-title task-def)
    :author (convert-user-to-core (task-author task-def))
    :assignee (convert-user-to-core (task-owner task-def))
    :description (parse-comment (utf-8-bytes-to-string (task-description task-def)))
    :projects (mapcar #'convert-project-to-core (task-projects task-def))
    :date (unix-to-universal-time (task-datecreated task-def))
-   :confidential (not (not (find (task-spacephid task-def) *confidential-space-phids* :test #'string=)))
-   :linked-tickets (mapcar #'convert-task-to-core (task-linked-tasks task-def))
-   :subscribers (mapcar #'convert-user-to-core (task-subscribers task-def))
-   :priority
-   (case (task-priority task-def)
-    (100 "Unbreak!")
-    (90 "Triage")
-    (80 "High")
-    (50 "Normal")
-    (25 "Low")
-    (0 "Wish"))
-   :type type
-   :notes (mapcar #'convert-task-comment-to-core (task-comments task-def)))))
+  :confidential (not (not (find (task-spacephid task-def) *confidential-space-phids* :test #'string=)))
+  :linked-tickets (mapcar #'convert-task-to-core (task-linked-tasks task-def))
+  :subscribers (mapcar #'convert-user-to-core (task-subscribers task-def))
+  :priority (task-priority-to-string (task-priority task-def))
+  :type (task-status-to-type (task-status task-def))
+  :notes (mapcar #'convert-task-comment-to-core (task-comments task-def))
+  :actions (mapcar #'convert-task-action-to-core (task-actions task-def))))
 
 (defun convert-paste-comment-to-core (comment)
  (forgerie-core:make-note

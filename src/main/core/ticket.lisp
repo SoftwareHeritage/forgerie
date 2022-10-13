@@ -18,5 +18,26 @@
  notes
  priority
 
+ ; ticket-action objects
+ actions
+
  linked-tickets
  subscribers)
+
+(defstruct ticket-action
+ id
+ author
+ date
+
+ ; can be a change of:
+ ; - :open -> opening ticket (newvalue = new state)
+ ; - :close -> closing ticket (newvalue = close reason)
+ ; - :title
+ ; - :description
+ ; - :priority
+ ; - :status
+ ; - :assignee
+ ; - :subscribers
+type
+
+ newvalue)
