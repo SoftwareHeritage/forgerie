@@ -617,9 +617,12 @@
      (first (get-request "users"
              :parameters
              `(("username" . ,(forgerie-core:user-username user)))))))
-   (or
+   (if user-on-gitlab
     ;; user exists
-    user-on-gitlab
+    (progn
+     (unless (getf user-on-gitlab :is_admin)
+      (set-gitlab-admin-status (getf user-on-gitlab :id) t))
+     user-on-gitlab)
 
     ;; create user, handling avatar + emails
     (let*
@@ -673,14 +676,21 @@
       (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
      gl-user)))))
 
+(defun set-gitlab-admin-status (gl-user-id should-be-admin)
+ (put-request
+  (format nil "/users/~A" gl-user-id)
+  `(("admin" . ,(if should-be-admin "true" "false")))))
+
 (defun update-user-admin-status (user &optional override)
+ (let
+  ((should-be-admin (or override (forgerie-core:user-admin user)))
+   (forgerie-username (forgerie-core:user-username user)))
+  (when forgerie-core:*debug* (format t "Requesting is_admin:~A for user ~A~%" should-be-admin forgerie-username))
  (when
-  (find-mapped-item :user (forgerie-core:user-username user))
+  (find-mapped-item :user forgerie-username)
   (let
-   ((gl-user (retrieve-mapping :user (forgerie-core:user-username user))))
-   (put-request
-    (format nil "/users/~A" (getf gl-user :id))
-    `(("admin" . ,(if (or override (forgerie-core:user-admin user)) "true" "false")))))))
+   ((gl-user (retrieve-mapping :user forgerie-username)))
+   (set-gitlab-admin-status (getf gl-user :id) should-be-admin)))))
 
 (defun add-users-to-projects (vc-repositories users)
  (let
