@@ -136,8 +136,29 @@
 
 ; We only cache this in memory, and not on disk, because we most likely want
 ; updated information any time a run is fresh.
+(defvar *projects-by-slug* nil)
 (defvar *projects-by-name* nil)
 (defvar *projects-by-id* nil)
+
+(defun find-gitlab-project (repo)
+ (let ((slug (forgerie-core:vc-repository-slug repo)))
+  (when (not (assoc slug *projects-by-slug* :test #'string=))
+   (let*
+    ((namespace-path (namespace-for-repo repo))
+     (namespace-id
+      (cond
+       (namespace-path
+        (mapped-item-id (find-mapped-item :group namespace-path)))
+       (*default-group*
+        (mapped-item-id (find-mapped-item :group :default-group)))))
+     (project-path (format nil "~A/~A" (or namespace-path (getf *default-group* :path)) slug))
+     (project (handler-case
+               (get-request (format nil "projects/~A" (quri:url-encode project-path)))
+               (http-error (e) nil))))
+    (setf *projects-by-slug* (cons (cons slug project) *projects-by-slug*))
+    (setf *projects-by-name* (cons (cons (getf project :name) project) *projects-by-name*))
+    (setf *projects-by-id* (cons (cons (getf project :id) project) *projects-by-id*))))
+  (cdr (assoc slug *projects-by-slug* :test #'string=))))
 
 (defun find-project-by-name (name)
  (when (not (assoc name *projects-by-name* :test #'string=))
@@ -149,6 +170,7 @@
       :test #'string=
       :key (lambda (gl-project) (getf gl-project :name)))))
    (setf *projects-by-name* (cons (cons name project) *projects-by-name*))
+   (setf *projects-by-slug* (cons (cons (getf project :slug) project) *projects-by-slug*))
    (setf *projects-by-id* (cons (cons (getf project :id) project) *projects-by-id*))))
  (cdr (assoc name *projects-by-name* :test #'string=)))
 
@@ -156,6 +178,7 @@
  (when (not (assoc id *projects-by-id*))
   (let
    ((project (get-request (format nil "projects/~A" id))))
+   (setf *projects-by-slug* (cons (cons (getf project :slug) project) *projects-by-slug*))
    (setf *projects-by-id* (cons (cons (getf project :id) project) *projects-by-id*))))
  (cdr (assoc id *projects-by-id*)))
 
@@ -275,7 +298,7 @@
  (let
   ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
   (if vc-repos
-   (find-project-by-name (forgerie-core:vc-repository-name (car vc-repos)))
+   (find-gitlab-project (car vc-repos))
    (when (not (getf *default-project* :disable-tickets)) (default-project)))))
 
 (defun remove-single-project ()
@@ -363,7 +386,7 @@
 (defun add-commit-comments (vc-repository)
  (single-project-check (forgerie-core:vc-repository-name vc-repository)
   (let
-   ((project (find-project-by-name (forgerie-core:vc-repository-name vc-repository))))
+   ((project (find-gitlab-project vc-repository)))
    (mapcar
     (lambda (commit)
      (let*
@@ -855,7 +878,7 @@
    (lambda (vc-repository)
     (when-unmapped (:members-added-to-project (forgerie-core:vc-repository-slug vc-repository))
      (let
-      ((gl-project (find-project-by-name (forgerie-core:vc-repository-name vc-repository))))
+      ((gl-project (find-gitlab-project vc-repository)))
       (mapcar
        (lambda (user)
         (let
@@ -999,14 +1022,11 @@
   (forgerie-core:vc-repository-name (forgerie-core:merge-request-vc-repository mr))
   (when-unmapped (:merge-request-completed (forgerie-core:merge-request-id mr))
    (let*
-    ((project-name
-      (forgerie-core:vc-repository-name
-       (forgerie-core:merge-request-vc-repository
-        mr)))
-     (project (find-project-by-name project-name)))
+    ((vc-repo (forgerie-core:merge-request-vc-repository mr))
+     (project (find-gitlab-project vc-repo)))
     (when-unmapped (:merge-request (forgerie-core:merge-request-id mr))
      (when (not project)
-      (error "Could not find project with name: ~A" project-name))
+      (error "Could not find project with slug: ~A" (forgerie-core:vc-repository-slug vc-repo)))
      (create-local-checkout project)
      ; We do this first, because if this errors, we want to bomb out first without doing the work
      ; to create all the branches and whatnot.  The other option would be to add a mapping for
