@@ -469,11 +469,13 @@
   ((find-ev-command
     (format nil "ev = Event.where(:target => ~A, :target_type => '~A')~@[~A~].order_by(:created_at => 'DESC').first"
      obj-id obj-type extra-filter)))
-  (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date)))
-  (rails-command (format nil "~A; begin sleep(0.1); ~A end while !ev" find-ev-command find-ev-command))
-  (rails-command "ev.created_at = action_time")
-  (rails-command "ev.updated_at = action_time")
-  (rails-command "ev.save")))
+  (rails-commands-with-recovery
+   (list
+    (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
+    (format nil "~A; begin sleep(0.1); ~A end while !ev" find-ev-command find-ev-command)
+    "ev.created_at = action_time"
+    "ev.updated_at = action_time"
+    "ev.save"))))
 
 (defun process-note-text (note-text project-id)
  (format nil "~{~A~}"
@@ -941,19 +943,23 @@
           (forgerie-core:merge-request-action-date action)
           :extra-filter ".where(:action => \"closed\")"))
         (update-last-mr-rse ()
-          (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
-          (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
-          (rails-command "rse = mr.resource_state_events[-1]")
-          (rails-command "rse.created_at = action_time")
-          (rails-command "rse.save"))
+         (rails-commands-with-recovery
+          (list
+           (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
+           (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+           "rse = mr.resource_state_events[-1]"
+           "rse.created_at = action_time"
+           "rse.save")))
         (update-mr-updated-at ()
-          (rails-command (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action))))
-          (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
-          (rails-command "mr.updated_at = action_time")
-          (rails-command "mr.save")
-          (rails-command "mr.metrics.updated_at = action_time")
-          (rails-command "mr.metrics.latest_closed_at = action_time")
-          (rails-command "mr.metrics.save")))
+         (rails-commands-with-recovery
+          (list
+           (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
+           (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+           "mr.updated_at = action_time"
+           "mr.save"
+           "mr.metrics.updated_at = action_time"
+           "mr.metrics.latest_closed_at = action_time"
+           "mr.metrics.save"))))
    (let* ((action-type (forgerie-core:merge-request-action-type action))
           (action-text (case action-type (:abandon "abandoned") (:close "merged"))))
      (case action-type
@@ -1043,12 +1049,14 @@
     (let
      ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
      (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
-     (rails-command (format nil "creation_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr))))
-     (rails-command (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id)))
-     (rails-command "mr.created_at = creation_time")
-     (rails-command "mr.save")
-     (rails-command "mr.metrics.created_at = creation_time")
-     (rails-command "mr.metrics.save")
+     (rails-commands-with-recovery
+      (list
+       (format nil "creation_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr)))
+       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+       "mr.created_at = creation_time"
+       "mr.save"
+       "mr.metrics.created_at = creation_time"
+       "mr.metrics.save"))
      (mapcar
       (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
       (forgerie-core:merge-request-notes mr))
@@ -1114,9 +1122,11 @@
           (mapcar
            (lambda (note) (create-note (getf default-project :id) "snippets" (getf gl-snippet :id) note))
            (forgerie-core:snippet-notes snippet)))
-         (rails-command (format nil "s = Snippet.find(~A)" (getf gl-snippet :id)))
-         (rails-command (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (ensure-user-created (forgerie-core:snippet-author snippet)))))
-         (rails-command (format nil "s.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:snippet-date snippet))))
-         (rails-command "s.author = u")
-         (rails-command "s.save")
+         (rails-commands-with-recovery
+          (list
+           (format nil "s = Snippet.find(~A)" (getf gl-snippet :id))
+           (format nil "u = User.find_by_username(\"~A\")" (forgerie-core:user-username (ensure-user-created (forgerie-core:snippet-author snippet))))
+           (format nil "s.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:snippet-date snippet)))
+           "s.author = u"
+           "s.save"))
          (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))))))

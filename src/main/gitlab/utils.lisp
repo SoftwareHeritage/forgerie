@@ -251,3 +251,20 @@
   (loop for line = (read-line (sb-ext:process-output *rails-connection*))
         do (when forgerie-core:*debug* (format t "Output: ~A~%" line))
         until (string= line "0"))))
+
+(defun rails-commands-with-recovery (commands)
+ (let*
+  ((errors nil)
+   (success
+    (dotimes (i 3)
+     (handler-case
+      (mapc #'rails-command commands)
+      (sb-int:broken-pipe (e)
+       (format t "Got a broken pipe error when running rails commands, retrying")
+       (sb-ext:process-close *rails-connection*)
+       (if (sb-ext:process-alive-p *rails-connection*)
+        (sb-ext:process-kill *rails-connection* 9))
+       (setf *rails-connection* nil))
+      (:no-error (result) (return :success))))))
+  (when (not success)
+   (error "Failed to run rails commands three times: ~A~%" commands))))
