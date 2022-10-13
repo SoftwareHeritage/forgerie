@@ -157,7 +157,10 @@
         end as transactiontype, newvalue
         from phabricator_maniphest.maniphest_transaction
         where objectphid = '~A' and
-            transactiontype in ('title', 'description', 'priority', 'status', 'reassign', 'subscribers', 'core:subscribers') order by datecreated"
+          transactiontype in (
+            'title', 'description', 'priority',
+            'status', 'reassign', 'subscribers', 'mergedinto',
+            'core:subscribers') order by datecreated"
     (task-phid task)))))
 
 (defun annotate-task-action (action)
@@ -173,6 +176,8 @@
      action))
    ((string= type "subscribers")
     (append (list :newvalue (mapcar #'get-user newvalue)) action))
+   ((string= type "mergedinto")
+    (append (list :newvalue (get-task newvalue :shallow t)) action))
    (t action))))
 
 (defun annotate-task (task)
@@ -1040,6 +1045,8 @@
      (values :subscribers (mapcar #'convert-user-to-core newvalue)))
     ((string= action-type "description")
      (values :description (parse-comment newvalue)))
+    ((string= action-type "mergedinto")
+     (values :mergedinto (convert-task-to-core newvalue)))
     (t
      (values (intern (string-upcase action-type) :keyword) newvalue))))
   (forgerie-core:make-ticket-action

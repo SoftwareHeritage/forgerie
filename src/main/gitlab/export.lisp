@@ -566,6 +566,22 @@
    (ticket-map-id (getf gl-ticket :id))
    (known-state (or (cdr (assoc ticket-map-id *ticket-state-map*)) (getf gl-ticket :state)))
    (known-labels (or (cdr (assoc ticket-map-id *ticket-labels-map*)) (getf gl-ticket :labels)))
+   (changes-for-close
+    (lambda (&key (state "resolved"))
+     (let*
+      ((state-label
+        (format nil "state:~A" state))
+       (new-labels
+        (cons
+         state-label
+         (remove-if
+          (lambda (label) (str:starts-with? "state:" label))
+          known-labels))))
+      (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
+      `(("labels" . ,(format-labels-for-post new-labels))
+        ,@(when (string= known-state "opened")
+           (setf *ticket-state-map* (acons ticket-map-id "closed" *ticket-state-map*))
+           '(("state_event" . "close")))))))
    (ticket-changes
     (case action-type
      (:open
@@ -584,20 +600,10 @@
             (setf *ticket-state-map* (acons ticket-map-id "opened" *ticket-state-map*))
             '(("state_event" . "reopen"))))))
      (:closed
-      (let*
-       ((state-label
-         (format nil "state:~A" new-value))
-        (new-labels
-         (cons
-          state-label
-          (remove-if
-           (lambda (label) (str:starts-with? "state:" label))
-           known-labels))))
-       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
-       `(("labels" . ,(format-labels-for-post new-labels))
-         ,@(when (string= known-state "opened")
-            (setf *ticket-state-map* (acons ticket-map-id "closed" *ticket-state-map*))
-            '(("state_event" . "close"))))))
+      (funcall changes-for-close :state new-value))
+     (:mergeinto
+      ;; TODO: add note or ticket link for the ticket we've merged into
+      (funcall changes-for-close :state "duplicate"))
      (:title
       `(("title" . ,new-value)))
      (:description

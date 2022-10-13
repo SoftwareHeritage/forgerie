@@ -33,11 +33,12 @@
  ; - :open -> opening ticket (newvalue = new state)
  ; - :close -> closing ticket (newvalue = close reason)
  ; - :title
- ; - :description
+ ; - :description (newvalue = list of parsed comment entries)
  ; - :priority
  ; - :status
- ; - :assignee
- ; - :subscribers
+ ; - :assignee (newvalue = user)
+ ; - :subscribers (newvalue = list of users)
+ ; - :mergedinto (newvalue = shallow ticket struct)
 type
 
  newvalue)
