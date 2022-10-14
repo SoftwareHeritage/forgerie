@@ -387,7 +387,7 @@
  (single-project-check (forgerie-core:vc-repository-name vc-repository)
   (let
    ((project (find-gitlab-project vc-repository)))
-   (mapcar
+   (mapc
     (lambda (commit)
      (let*
       ((comment (forgerie-core:commit-parsed-comment commit))
@@ -424,12 +424,38 @@
        (when-unmapped (:commit-comment (forgerie-core:commit-sha commit))
         (let
          ((commit-in-gitlab
-           (get-request (format nil "/projects/~A/repository/commits/~A" (getf project :id) (forgerie-core:commit-sha commit)))))
+           (get-request (format nil "/projects/~A/repository/commits/~A"
+                         (getf project :id) (forgerie-core:commit-sha commit)))))
          (post-request
-          (format nil "/projects/~A/repository/commits/~A/discussions" (getf project :id) (forgerie-core:commit-sha commit))
-          `(("body" . ,body)
-            ("created_at" . ,(getf commit-in-gitlab :created_at)))))
-        (update-mapping (:commit-comment (forgerie-core:commit-sha commit)))))))
+          (format nil "/projects/~A/repository/commits/~A/comments" (getf project :id) (forgerie-core:commit-sha commit))
+          `(("note" . ,body)))
+         (rails-commands-with-recovery
+          (list
+           (format nil
+            "n = Note.where(:noteable_type => 'Commit', :commit_id => '~A', :project_id => ~A).order(:created_at => 'DESC').first"
+            (forgerie-core:commit-sha commit) (getf project :id))
+           "n.created_at = n.commit.date"
+           "n.updated_at = n.commit.date"
+           "n.save"))
+         (mapc
+          (lambda (item)
+           (let
+            ((mi (find-mapped-item (car item) (parse-integer (cadr item))))
+             (notable-type
+              (cond
+               ((eql :ticket (car item)) "Issue")
+               ((eql :merge-request (car item)) "MergeRequest")
+               ((eql :snippet (car item)) "Snippet"))))
+            (rails-commands-with-recovery
+             (list
+              (format nil "n = Note.where(:noteable_type => '~A', :project_id => ~A, :noteable_id => ~A).order(:created_at => 'DESC').first"
+               notable-type (getf project :id) (mapped-item-id mi))
+              (format nil "commit_date = Time.parse('~A')" (getf commit-in-gitlab :authored_date))
+              "n.created_at = commit_date"
+              "n.updated_at = commit_date"
+              "n.save"))))
+          mappings)
+         (update-mapping (:commit-comment (forgerie-core:commit-sha commit))))))))
     (forgerie-core:vc-repository-commits vc-repository)))))
 
 ; Projects are created from vc repositories, since they are linked in gitlab.
