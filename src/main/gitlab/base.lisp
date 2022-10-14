@@ -84,6 +84,12 @@ docker instead.")
 
  Useful to create backlinks to the previous system, or addition migration information")
 
+(defvar *fallback-file-text* nil
+ "A function that takes a forgerie-core:file, and returns the (markdown) text that will
+ be output when the file was too large to be uploaded.
+
+ Useful to create a link to the previous system on files that are not migrated yet")
+
 (defvar *limit-to-active-users* nil
  "If non nil, will only add users to the gitlab instance if they are active in the
  items also coming over for processing.  Useful when doing piecemeal conversions.")

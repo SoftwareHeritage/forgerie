@@ -97,6 +97,12 @@
   (funcall *ticket-suffix* ticket)
   ""))
 
+(defun fallback-file-text (file)
+ (if *fallback-file-text*
+  (funcall *fallback-file-text* file)
+  (format nil "File <~A (id=~A)> too large, skipped upload"
+   (forgerie-core:file-name file) (forgerie-core:file-id file))))
+
 (defun namespace-for-repo (repository)
  (if
   *namespace-for-repo*

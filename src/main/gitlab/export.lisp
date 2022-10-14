@@ -617,10 +617,16 @@
          (forgerie-core:file-name file)))))
      (unwind-protect
       (progn
-       (sb-posix:link (pathname (forgerie-core:file-location file)) link-path)
-       (post-request
-        (format nil "projects/~A/uploads" project-id)
-        `(("file" . ,link-path))))
+       (sb-posix:symlink (pathname (forgerie-core:file-location file)) link-path)
+       (handler-case
+        (post-request
+         (format nil "projects/~A/uploads" project-id)
+         `(("file" . ,link-path)))
+        (http-error (e)
+         (cond
+          ((= 413 (http-error-code e))
+           `(:markdown ,(fallback-file-text file)))
+          (t (error e))))))
       (ignore-errors (delete-file link-path)))))))
   (retrieve-mapping :file-uploaded (forgerie-core:file-id file))))
 
