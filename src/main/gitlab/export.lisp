@@ -688,10 +688,10 @@
            '(("state_event" . "reopen"))))
       :update-event (string= known-state "closed")))
     (:closed
-     (change-ticket (changes-for-close :state new-value) :update-event t))
+     (change-ticket (changes-for-close :state new-value) :update-event (string= known-state "opened")))
     (:mergedinto
      ;; TODO: add note or ticket link for the ticket we've merged into
-     (change-ticket (changes-for-close :state "duplicate") :update-event t))
+     (change-ticket (changes-for-close :state "duplicate") :update-event (string= known-state "opened")))
     (:title
      (change-ticket `(("title" . ,new-value))))
     (:description
