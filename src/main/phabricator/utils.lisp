@@ -117,7 +117,15 @@
    (ensure-directories-exist ,cache-path)
    (if
     (and (probe-file ,cache-path) (not ,override-cache) (not *override-cache*))
-    (with-open-file (str ,cache-path) (read str))
+    (let ((data (with-open-file (str ,cache-path) (read str))))
+     (if data ;; let's check if the data is non nil
+      data   ;; and return it
+      ;; otherwise, fallbacks to fetch data again and overwrite it
+      (let
+       ((,obj ,item))
+       (with-open-file (str ,cache-path :direction :output :if-exists :supersede)
+        (format str "~S" ,obj))
+       ,obj)))
     (let
      ((,obj ,item))
      (with-open-file (str ,cache-path :direction :output :if-exists :supersede)
