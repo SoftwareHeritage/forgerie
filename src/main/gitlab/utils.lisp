@@ -36,8 +36,11 @@
   (handler-case
    (multiple-value-bind
     (body code headers uri stream)
-    (dex:request (format nil "~A/api/v4/~A" *server-address* path) :method method :content parameters
-                 :headers `(("PRIVATE-TOKEN" . ,*private-token*) ,@headers))
+    (handler-bind ((simple-error  ;; this triggers when trying to write to a closed SSL context
+                    (dex:retry-request 3
+                     :interval (lambda (attempt) (ash 1 (+ attempt 2))))))
+     (dex:request (format nil "~A/api/v4/~A" *server-address* path) :method method :content parameters
+                  :headers `(("PRIVATE-TOKEN" . ,*private-token*) ,@headers)))
     (when
      (not (= 304 code)) ; 304s are empty, and can be ignored
      (let
