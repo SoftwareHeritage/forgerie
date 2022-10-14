@@ -277,3 +277,6 @@
          (sb-ext:process-kill *rails-connection* 9))
         (setf *rails-connection* nil)
         (go retry))))))))
+
+(defun rails-wait-for (target cmd)
+ (format nil "~A = ~A; begin sleep(0.1); ~A = ~A end while !~A" target cmd target cmd target))

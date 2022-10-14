@@ -431,9 +431,11 @@
           `(("note" . ,body)))
          (rails-commands-with-recovery
           (list
-           (format nil
-            "n = Note.where(:noteable_type => 'Commit', :commit_id => '~A', :project_id => ~A).order(:created_at => 'DESC').first"
-            (forgerie-core:commit-sha commit) (getf project :id))
+           (rails-wait-for
+            "n"
+            (format nil
+             "Note.where(:noteable_type => 'Commit', :commit_id => '~A', :project_id => ~A).order(:created_at => 'DESC').first"
+             (forgerie-core:commit-sha commit) (getf project :id)))
            "n.created_at = n.commit.date"
            "n.updated_at = n.commit.date"
            "n.save"))
@@ -516,12 +518,12 @@
 (defun update-event-date (obj-type obj-id new-date &key extra-filter)
  (let
   ((find-ev-command
-    (format nil "ev = Event.where(:target => ~A, :target_type => '~A').where(\"created_at > ?\", action_time)~@[~A~].order(:created_at => 'DESC').first"
+    (format nil "Event.where(:target => ~A, :target_type => '~A').where(\"created_at > ?\", action_time)~@[~A~].order(:created_at => 'DESC').first"
      obj-id obj-type extra-filter)))
   (rails-commands-with-recovery
    (list
     (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
-    (format nil "~A; begin sleep(0.1); ~A end while !ev" find-ev-command find-ev-command)
+    (rails-wait-for "ev" find-ev-command)
     "ev.created_at = action_time"
     "ev.updated_at = action_time"
     "ev.save"))))
