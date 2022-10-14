@@ -1116,6 +1116,7 @@
   :private (not (not (find (paste-spacephid paste-def) *confidential-space-phids* :test #'string=)))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
+ (setf *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
  (let
   ((revoke-cache
     (and
@@ -1127,7 +1128,7 @@
   (cached "everything" "included-repositories" *included-repositories* t)
   (list
    :users (get-objects revoke-cache :type "users" :import-fn #'get-users :convert-fn #'convert-user-to-core)
-   :projects (get-objects revoke-cache :type "projects" :import-fn 'get-projects)
+   :projects (get-objects revoke-cache :type "projects" :import-fn #'get-projects :convert-fn #'convert-project-to-core)
    :vc-repositories (get-objects revoke-cache :type "repositories" :import-fn #'get-repositories :convert-fn #'convert-repository-to-core)
    :snippets (get-objects revoke-cache :type "snippets" :import-fn #'get-pastes :convert-fn #'convert-paste-to-core)
    :merge-requests (get-objects revoke-cache :type "merge-requests" :import-fn #'get-revisions :convert-fn #'convert-revision-to-core)
@@ -1140,8 +1141,7 @@
 When REVOKE-CACHE, this fetches data directly from phabricator and update the
 CACHE-NAME' cache."
  (setf *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
- (when revoke-cache
-  (initialize))
+ (initialize)
  (cached cache-name type
   (mapcar (lambda (o) (funcall convert-fn o)) (funcall import-fn))
   revoke-cache))
