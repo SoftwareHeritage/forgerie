@@ -490,7 +490,7 @@
 (defun update-event-date (obj-type obj-id new-date &key extra-filter)
  (let
   ((find-ev-command
-    (format nil "ev = Event.where(:target => ~A, :target_type => '~A')~@[~A~].order_by(:created_at => 'DESC').first"
+    (format nil "ev = Event.where(:target => ~A, :target_type => '~A').where(\"created_at > ?\", action_time)~@[~A~].order_by(:created_at => 'DESC').first"
      obj-id obj-type extra-filter)))
   (rails-commands-with-recovery
    (list
