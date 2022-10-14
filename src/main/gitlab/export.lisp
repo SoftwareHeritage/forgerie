@@ -1179,7 +1179,7 @@
             ; See https://docs.gitlab.com/ee/api/snippets.html#create-new-snippet
            `(("title" . ,(or (forgerie-core:snippet-title snippet) "Forgerie Generated Title"))
              ("content" . ,content)
-             ("description" . ,(when *snippet-suffix* (funcall *snippet-suffix* (forgerie-core:snippet-id snippet))))
+             ("description" . ,(when *snippet-suffix* (funcall *snippet-suffix* snippet)))
              ("visibility" . ,(if (forgerie-core:snippet-private snippet) "private" "public"))
              ("file_name" . ,(forgerie-core:file-name file))))))
          (error (e)
