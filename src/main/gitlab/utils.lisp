@@ -255,18 +255,25 @@
         until (string= line "0"))))
 
 (defun rails-commands-with-recovery (commands)
- (let*
-  ((errors nil)
-   (success
-    (dotimes (i 3)
+ (block nil
+  (let ((times 0))
+   (tagbody
+    retry
      (handler-case
-      (mapc #'rails-command commands)
-      (sb-int:broken-pipe (e)
-       (format t "Got a broken pipe error when running rails commands, retrying")
-       (sb-ext:process-close *rails-connection*)
-       (if (sb-ext:process-alive-p *rails-connection*)
-        (sb-ext:process-kill *rails-connection* 9))
-       (setf *rails-connection* nil))
-      (:no-error (result) (return :success))))))
-  (when (not success)
-   (error "Failed to run rails commands three times: ~A~%" commands))))
+      (progn
+       (mapc #'rails-command commands)
+       (return nil))
+      ((or sb-int:broken-pipe end-of-file)
+       (condition)
+       (format t "Got error ~A when running rails commands~%" condition)
+       (when (= times 2)
+        (error "Failed to run rails commands ~A times: ~A~%" (+ times 1) commands))
+       (incf times)
+       (let ((nsecs (ash 1 (+ times 1))))  ;; 4 8 16
+        (format t "Sleeping for ~As~%" nsecs)
+        (sleep nsecs)
+        (sb-ext:process-close *rails-connection*)
+        (if (sb-ext:process-alive-p *rails-connection*)
+         (sb-ext:process-kill *rails-connection* 9))
+        (setf *rails-connection* nil)
+        (go retry))))))))
