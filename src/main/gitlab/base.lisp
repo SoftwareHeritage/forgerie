@@ -78,6 +78,12 @@ docker instead.")
 
  Useful to create backlinks to the previous system, or addition migration information")
 
+(defvar *snippet-suffix* nil
+ "A function that takes an argument of a forgerie-core:snippet and
+ returns a string that will be appended to the description of created snippets (pastes).
+
+ Useful to create backlinks to the previous system, or addition migration information")
+
 (defvar *limit-to-active-users* nil
  "If non nil, will only add users to the gitlab instance if they are active in the
  items also coming over for processing.  Useful when doing piecemeal conversions.")
