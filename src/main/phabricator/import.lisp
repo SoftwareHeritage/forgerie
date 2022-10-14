@@ -36,6 +36,10 @@
 
 (defvar *query-cache* nil)
 
+(defun purge-query-cache ()
+ "Allow purging query the *query-cache* variable (for debug purposes)."
+ (setf *query-cache* nil))
+
 (defun query (query)
  (when (not (assoc query *query-cache* :test #'string=))
   (when forgerie-core:*debug* (format t "~S~%" query))

@@ -11,4 +11,4 @@
   #:get-pastes #:convert-paste-to-core
   #:get-revisions #:convert-revision-to-core
   #:get-tasks #:convert-task-to-core
-  #:get-captured-files #:convert-file-to-core))
+  #:get-captured-files #:convert-file-to-core #:purge-query-cache))
