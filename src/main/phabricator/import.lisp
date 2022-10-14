@@ -60,11 +60,12 @@
 
 ; https://github.com/hackinghat/cl-mysql/blob/3fbf6e1421484f64c5bcf2ff3c4b96c6f0414f09/pool.lisp#L283
 (defun initialize ()
+ (when (not cl-mysql-system:*last-database*)
   (if *database-host*
-    (cl-mysql:connect :host *database-host* :port *database-port*
-                      :user *database-username* :password *database-password* )
-  (cl-mysql:connect :user *database-username* :password *database-password*))
- (cl-mysql:query "set names 'utf8mb4'"))
+   (cl-mysql:connect :host *database-host* :port *database-port*
+    :user *database-username* :password *database-password* )
+   (cl-mysql:connect :user *database-username* :password *database-password*))
+  (cl-mysql:query "set names 'utf8mb4'")))
 
 (defun utf-8-bytes-to-string (bytes-list)
  (trivial-utf-8:utf-8-bytes-to-string (or bytes-list #())))
@@ -1099,9 +1100,8 @@
   :private (not (not (find (paste-spacephid paste-def) *confidential-space-phids* :test #'string=)))))
 
 (defmethod forgerie-core:import-forge ((forge (eql :phabricator)))
- (setf *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
  (let
-  ((override-everything-cache
+  ((revoke-cache
     (and
      *included-repositories*
      (not
@@ -1109,12 +1109,23 @@
        *included-repositories*
        (cached "everything" "included-repositories" nil))))))
   (cached "everything" "included-repositories" *included-repositories* t)
-  (initialize)
   (list
-   :users (cached "everything" "users" (mapcar #'convert-user-to-core (get-users)) override-everything-cache)
-   :projects (cached "everything" "projects" (mapcar #'convert-project-to-core (get-projects)) override-everything-cache)
-   :vc-repositories (cached "everything" "repositories" (mapcar #'convert-repository-to-core (get-repositories)) override-everything-cache)
-   :snippets (cached "everything" "snippets" (mapcar #'convert-paste-to-core (get-pastes)) override-everything-cache)
-   :merge-requests (cached "everything" "merge-requests" (mapcar #'convert-revision-to-core (get-revisions)) override-everything-cache)
-   :tickets (cached "everything" "tickets" (mapcar #'convert-task-to-core (get-tasks)) override-everything-cache)
-   :files (cached "everything" "files" (mapcar #'convert-file-to-core (get-captured-files)) override-everything-cache))))
+   :users (get-objects revoke-cache :type "users" :import-fn #'get-users :convert-fn #'convert-user-to-core)
+   :projects (get-objects revoke-cache :type "projects" :import-fn 'get-projects)
+   :vc-repositories (get-objects revoke-cache :type "repositories" :import-fn #'get-repositories :convert-fn #'convert-repository-to-core)
+   :snippets (get-objects revoke-cache :type "snippets" :import-fn #'get-pastes :convert-fn #'convert-paste-to-core)
+   :merge-requests (get-objects revoke-cache :type "merge-requests" :import-fn #'get-revisions :convert-fn #'convert-revision-to-core)
+   :tickets (get-objects revoke-cache :type "tickets" :import-fn #'get-tasks :convert-fn #'convert-task-to-core)
+   :files (get-objects revoke-cache :type "files" :import-fn #'get-captured-files :convert-fn #'convert-file-to-core))))
+
+(defun get-objects (revoke-cache &key type import-fn convert-fn (cache-name "everything"))
+ "Get TYPE converted (with CONVERT-FN) objects using GETTER-FN.
+
+When REVOKE-CACHE, this fetches data directly from phabricator and update the
+CACHE-NAME' cache."
+ (setf *working-directory* (format nil "~Aphabricator" forgerie-core:*working-directory*))
+ (when revoke-cache
+  (initialize))
+ (cached cache-name type
+  (mapcar (lambda (o) (funcall convert-fn o)) (funcall import-fn))
+  revoke-cache))
