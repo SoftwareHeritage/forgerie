@@ -617,77 +617,67 @@
    (action-date-str (to-iso-8601 (forgerie-core:ticket-action-date action)))
    (ticket-map-id (getf gl-ticket :id))
    (known-state (or (cdr (assoc ticket-map-id *ticket-state-map*)) (getf gl-ticket :state)))
-   (known-labels (or (cdr (assoc ticket-map-id *ticket-labels-map*)) (getf gl-ticket :labels)))
-   (changes-for-close
-    (lambda (&key (state "resolved"))
-     (let*
-      ((state-label
-        (format nil "state:~A" state))
-       (new-labels
-        (cons
-         state-label
-         (remove-if
-          (lambda (label) (str:starts-with? "state:" label))
-          known-labels))))
+   (known-labels (or (cdr (assoc ticket-map-id *ticket-labels-map*)) (getf gl-ticket :labels))))
+  (labels
+   ((changes-add-label (label &optional (filter-fn (lambda (l) nil)))
+     (let
+      ((new-labels
+        (cons label (remove-if filter-fn known-labels))))
       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
-      `(("labels" . ,(format-labels-for-post new-labels))
-        ,@(when (string= known-state "opened")
-           (setf *ticket-state-map* (acons ticket-map-id "closed" *ticket-state-map*))
-           '(("state_event" . "close")))))))
-   (ticket-changes
-    (case action-type
-     (:open
-      (let*
-       ((state-label
-         (format nil "state:~A" new-value))
-        (new-labels
-         (cons
-          state-label
-          (remove-if
-           (lambda (label) (str:starts-with? "state:" label))
-           known-labels))))
-       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
-       `(("labels" . ,(format-labels-for-post new-labels))
-         ,@(when (string= known-state "closed")
-            (setf *ticket-state-map* (acons ticket-map-id "opened" *ticket-state-map*))
-            '(("state_event" . "reopen"))))))
-     (:closed
-      (funcall changes-for-close :state new-value))
-     (:mergeinto
-      ;; TODO: add note or ticket link for the ticket we've merged into
-      (funcall changes-for-close :state "duplicate"))
-     (:title
-      `(("title" . ,new-value)))
-     (:description
-      `(("description" . ,(process-note-text
-                           (append new-value (list (ticket-suffix vc-ticket)))
-                           (getf gl-ticket :project_id)))))
-     (:priority
-      (let*
-       ((priority-label
-         (format nil "priority:~A" new-value))
-        (new-labels
-         (cons
-          priority-label
-          (remove-if
-           (lambda (label) (str:starts-with? "priority:" label))
-           known-labels))))
-       (setf *ticket-labels-map* (acons ticket-map-id new-labels *ticket-labels-map*))
-       `(("labels" . ,(format-labels-for-post new-labels)))))
-     (:reassign
-      (let
-       ((assignee-id
-         (if new-value
-          (getf (retrieve-mapping :user (forgerie-core:user-username (ensure-user-created new-value))) :id))))
-       `(("assignee_ids" . ,(format nil "[~@[~A~]]" assignee-id)))))
-     (:subscribers)
-     (otherwise (error "Unknown ticket action ~A" action-type)))))
-  (when ticket-changes
-   (put-request
-    (format nil "projects/~A/issues/~A" (getf gl-ticket :project_id) (getf gl-ticket :iid))
-    `(("updated_at" . ,action-date-str)
-      ,@ticket-changes)
-    :sudo author-username))))
+      `("labels" . ,(format-labels-for-post new-labels))))
+    (changes-for-close (&key (state "resolved"))
+     `(,(changes-add-label
+         (format nil "state:~A" state)
+         (lambda (label) (str:starts-with? "state:" label)))
+       ,@(when (string= known-state "opened")
+          (setf *ticket-state-map* (acons ticket-map-id "closed" *ticket-state-map*))
+          '(("state_event" . "close")))))
+    (change-ticket (ticket-changes &key update-event)
+     (when ticket-changes
+      (put-request
+       (format nil "projects/~A/issues/~A" (getf gl-ticket :project_id) (getf gl-ticket :iid))
+       `(("updated_at" . ,action-date-str)
+         ,@ticket-changes)
+       :sudo author-username)
+      (when update-event
+       (update-event-date "Issue"
+        (getf gl-ticket :id)
+        (forgerie-core:ticket-action-date action))))))
+   (case action-type
+    (:open
+     (change-ticket
+      `(,(changes-add-label
+          (format nil "state:~A" new-value)
+          (lambda (label) (str:starts-with? "state:" label)))
+        ,@(when (string= known-state "closed")
+           (setf *ticket-state-map* (acons ticket-map-id "opened" *ticket-state-map*))
+           '(("state_event" . "reopen"))))
+      :update-event (string= known-state "closed")))
+    (:closed
+     (change-ticket (changes-for-close :state new-value) :update-event t))
+    (:mergedinto
+     ;; TODO: add note or ticket link for the ticket we've merged into
+     (change-ticket (changes-for-close :state "duplicate") :update-event t))
+    (:title
+     (change-ticket `(("title" . ,new-value))))
+    (:description
+     (change-ticket `(("description" . ,(process-note-text
+                                         (append new-value (list (ticket-suffix vc-ticket)))
+                                         (getf gl-ticket :project_id))))))
+    (:priority
+     (change-ticket
+      (list
+       (changes-add-label
+        (format nil "priority:~A" new-value)
+        (lambda (label) (str:starts-with? "priority:" label))))))
+    (:reassign
+     (let
+      ((assignee-id
+        (if new-value
+         (getf (retrieve-mapping :user (forgerie-core:user-username (ensure-user-created new-value))) :id))))
+      (change-ticket `(("assignee_ids" . ,(format nil "[~@[~A~]]" assignee-id))))))
+    (:subscribers)
+    (otherwise (error "Unknown ticket action ~A" action-type))))))
 
 (defun create-ticket (ticket vc-repositories)
  (single-project-check
