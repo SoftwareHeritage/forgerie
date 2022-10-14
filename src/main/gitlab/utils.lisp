@@ -100,8 +100,7 @@
   (funcall *namespace-for-repo* repository)))
 
 (defun to-iso-8601 (d)
- (multiple-value-bind (sec min hr date month year) (decode-universal-time d 0)
-  (format nil "~A-~2,,,'0@A-~2,,,'0@AT~2,,,'0@A:~2,,,'0@A:~2,,,'0@AZ" year month date hr min sec)))
+ (forgerie-core:to-iso-8601 d))
 
 (defstruct mapped-item type original-id id iid project-id)
 (defstruct mapped-file type original-id response)

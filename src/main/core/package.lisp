@@ -53,4 +53,4 @@
   #:add-mapping-error #:*log-mapping-errors* #:display-mapping-error
 
   ; utils.lisp
-  #:vc-repositories-with-primary-project #:git-cmd #:*debug*))
+  #:vc-repositories-with-primary-project #:git-cmd #:*debug* #:to-iso-8601))

@@ -38,3 +38,7 @@ as http requests, git commands, and database queries")
   (if (and error (not (zerop code)))
    (error "Got error running git command ~A with args ~S in dir ~A" cmd args git-dir))
   (values code out err)))
+
+(defun to-iso-8601 (d)
+ (multiple-value-bind (sec min hr date month year) (decode-universal-time d 0)
+  (format nil "~A-~2,,,'0@A-~2,,,'0@AT~2,,,'0@A:~2,,,'0@A:~2,,,'0@AZ" year month date hr min sec)))

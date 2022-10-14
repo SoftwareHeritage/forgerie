@@ -604,8 +604,20 @@
        (error "Couldn't find a sha for which this could be applied"))
       ((sha-applicable (car shas)) (car shas))
       (t (find-parent-sha (cdr shas))))))
-   (let
-    ((parent-commit-sha (find-parent-sha)))
+   (let*
+    ((rev-date (unix-to-universal-time (differential-revision-datecreated revision)))
+    (end-date (+ rev-date (* 7 24 3600)))
+    (applicable-shas
+     (cl-ppcre:split
+      "\\n"
+      (nth-value 1
+       (forgerie-core:git-cmd path "log"
+        (list
+         "--pretty=%H"
+         "--all"
+         "--until" (forgerie-core:to-iso-8601 end-date)
+         "-n" "50")))))
+    (parent-commit-sha (find-parent-sha applicable-shas)))
     (forgerie-core:git-cmd path "add" (list "."))
     (forgerie-core:git-cmd path "commit"
      (list
