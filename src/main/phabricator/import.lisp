@@ -674,7 +674,7 @@
     "select
         id, authorphid, datecreated,
         case
-          when transactionType = 'differential:action' then
+          when transactionType in ('differential:action', 'differential.revision.status') then
             substring(newvalue from 2 for length(newvalue)-2)
           else
             substring(transactionType from 23)
@@ -685,8 +685,7 @@
              'differential:action',
              'differential.revision.abandon',
              'differential.revision.close',
-             'differential.revision.accept',
-             'differential.revision.reject'
+             'differential.revision.status'
            )
      order by datecreated"
     (differential-revision-phid rev)))))
@@ -937,11 +936,12 @@
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
 
 (defun convert-differential-action-newvalue-to-core (newvalue)
-  (cond ((equalp newvalue "close") :close)
-        ((equalp newvalue "accept") :accept)
-        ((equalp newvalue "reject") :reject)
-        ((equalp newvalue "abandon") :abandon)
-        (t :unknown)))
+  (cond ((string= newvalue "close") :close)
+        ((string= newvalue "accept") :accept)
+        ((string= newvalue "reject") :reject)
+        ((string= newvalue "abandon") :abandon)
+        ((string= newvalue "commit") :close)
+        (t (error "unknown differential action ~A" newvalue))))
 
 (defun convert-differential-action-to-core (action)
   (forgerie-core:make-merge-request-action
