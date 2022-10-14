@@ -500,6 +500,19 @@
     "ev.updated_at = action_time"
     "ev.save"))))
 
+(defun update-updated-at (obj-type obj-id new-date &key metrics created-at latest-closed-at)
+ (rails-commands-with-recovery
+  `(,(format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
+    ,(format nil "obj = ~A.find(~A)" obj-type obj-id)
+    "obj.updated_at = action_time"
+    ,@(when created-at '("obj.created_at = action_time"))
+    ,@(when metrics
+       `("obj.metrics.updated_at = action_time"
+         ,@(when created-at '("obj.metrics.created_at = action_time"))
+         ,@(when latest-closed-at '("obj.metrics.latest_closed_at = action_time"))
+         "obj.metrics.save"))
+    "obj.save")))
+
 (defun process-note-text (note-text project-id)
  (format nil "~{~A~}"
   (mapcar
@@ -738,6 +751,7 @@
          :ticket-iid-not-set
          (forgerie-core:ticket-id ticket)
          (format nil "Ticket iid ignored by gitlab for ~A (~A)" (forgerie-core:ticket-id ticket) (getf (getf gl-ticket :references) :full))))
+       (update-updated-at "Issue" (getf gl-ticket :id) (forgerie-core:ticket-date ticket) :metrics t :created-at t)
        (update-event-date "Issue" (getf gl-ticket :id) (forgerie-core:ticket-date ticket))
        (mapc
         (lambda (u)
@@ -999,15 +1013,10 @@
            "rse.created_at = action_time"
            "rse.save")))
         (update-mr-updated-at ()
-         (rails-commands-with-recovery
-          (list
-           (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
-           (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-           "mr.updated_at = action_time"
-           "mr.save"
-           "mr.metrics.updated_at = action_time"
-           "mr.metrics.latest_closed_at = action_time"
-           "mr.metrics.save"))))
+         (update-updated-at "MergeRequest"
+          (getf gl-mr :id)
+          (forgerie-core:merge-request-action-date action)
+          :metrics t :latest-closed-at t)))
    (let* ((action-type (forgerie-core:merge-request-action-type action))
           (action-text (case action-type (:abandon "abandoned") (:close "merged"))))
      (case action-type
@@ -1030,8 +1039,7 @@
        :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-action-author action))))
       (update-last-mr-event)
       (update-last-mr-rse)
-      (update-mr-updated-at))
-     ))))
+      (update-mr-updated-at))))))
 
 (defun create-merge-request (mr)
  (single-project-check
@@ -1094,14 +1102,8 @@
     (let
      ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
      (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
-     (rails-commands-with-recovery
-      (list
-       (format nil "creation_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-date mr)))
-       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-       "mr.created_at = creation_time"
-       "mr.save"
-       "mr.metrics.created_at = creation_time"
-       "mr.metrics.save"))
+     (update-updated-at "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr)
+      :created-at t :metrics t)
      (mapcar
       (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
       (forgerie-core:merge-request-notes mr))
