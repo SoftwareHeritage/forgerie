@@ -22,9 +22,10 @@
 
 ; For actions that happened on a merge-request
 (defstruct merge-request-action
-  author
-  date
-  type)
+ id
+ author
+ date
+ type)
 
 (defstruct merge-request
  id

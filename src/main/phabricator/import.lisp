@@ -666,7 +666,7 @@
   action
   (list :author (get-user (differential-action-authorphid action)))))
 
-(defun get-revision-actions (rev)
+(defun get-diff-actions (rev)
  (mapcar
   #'add-author-to-differential-action
   (query
@@ -816,7 +816,7 @@
       rev
       (list :author (get-user (differential-revision-authorphid rev)))
       (list :comments (get-revision-comments rev))
-      (list :actions (get-revision-actions rev))
+      (list :actions (get-diff-actions rev))
       (multiple-value-bind (commits unattached-comments) (get-revision-commits rev)
        (let
         ((comments-to-attach
@@ -952,6 +952,7 @@
 
 (defun convert-differential-action-to-core (action)
   (forgerie-core:make-merge-request-action
+   :id (format nil "DiffAction~A" (differential-action-id action))
    :author (convert-user-to-core (differential-action-author action))
    :date (unix-to-universal-time (differential-action-datecreated action))
    :type (convert-differential-action-newvalue-to-core (differential-action-newvalue action))))
@@ -1099,7 +1100,7 @@
 
 (defun convert-paste-comment-to-core (comment)
  (forgerie-core:make-note
-  :id (format nil "P~A" (paste-comment-id comment))
+  :id (format nil "PasteNote~A" (paste-comment-id comment))
   :text (parse-comment (utf-8-bytes-to-string (paste-comment-content comment)))
   :author (convert-user-to-core (paste-comment-author comment))
   :date (unix-to-universal-time (paste-comment-datecreated comment))))

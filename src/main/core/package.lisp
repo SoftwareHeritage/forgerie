@@ -46,7 +46,8 @@
   #:merge-request-change-comment-text #:merge-request-change-comment-replies #:merge-request-change-comment-author
   #:merge-request-change-comment-file #:merge-request-change-comment-date #:merge-request-other-change-comments
 
-  #:make-merge-request-action #:merge-request-action-author #:merge-request-action-date #:merge-request-action-type
+  #:make-merge-request-action #:merge-request-action #:merge-request-action-id #:merge-request-action-author
+  #:merge-request-action-date #:merge-request-action-type
 
 
   ; errors.lisp
