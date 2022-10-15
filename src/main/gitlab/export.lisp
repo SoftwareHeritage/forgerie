@@ -210,7 +210,6 @@
        `(("name" . ,(getf *default-project* :name))
          ("issues_access_level" . "enabled")
          ("snippets_access_level" . "enabled")
-         ("repository_access_level" . "disabled")
          ("auto_devops_enabled" . "false")
          ("wiki_access_level" . "disabled")
          ("requirements_access_level" . "disabled")
