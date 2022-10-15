@@ -418,7 +418,7 @@
                 (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
                 (let
                  ((other-project (find-project-by-id (mapped-item-project-id mi))))
-                 (format nil "~A~A~A" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi))))))))
+                 (format nil "~A~A~A" (getf other-project :path_with_namespace) c (or (mapped-item-iid mi) (mapped-item-id mi))))))))
             mappings))))))
       (when body
        (when-unmapped (:commit-comment (forgerie-core:commit-sha commit))
@@ -554,7 +554,7 @@
          (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
          (let
           ((other-project (find-project-by-id (mapped-item-project-id mi))))
-          (format nil "~A~A~A" (getf other-project :path) c (or (mapped-item-iid mi) (mapped-item-id mi)))))))
+          (format nil "~A~A~A" (getf other-project :path_with_namespace) c (or (mapped-item-iid mi) (mapped-item-id mi)))))))
       (handle-file (file-id)
        (let
         ((file-response (create-file file-id project-id)))
