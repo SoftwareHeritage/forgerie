@@ -169,7 +169,7 @@
      ,mapped-item
      (mapping)))
    (with-open-file (,str (mapping-file) :direction :output :if-exists :append :if-does-not-exist :create)
-    (format ,str "~S" ,mapped-item))
+    (format ,str "~S~%" ,mapped-item))
    (forgerie-core:check-for-stop)
    ,result)))
 
@@ -189,7 +189,7 @@
     *mapping*
     (cons ,mapped-item (mapping)))
    (with-open-file (,str (mapping-file) :direction :output :if-exists :append :if-does-not-exist :create)
-    (format ,str "~S" ,mapped-item))
+    (format ,str "~S~%" ,mapped-item))
    (forgerie-core:check-for-stop)
    ,result)))
 
