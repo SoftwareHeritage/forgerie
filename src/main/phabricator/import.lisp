@@ -930,7 +930,7 @@
 
 (defun convert-differential-comment-to-core (comment)
  (forgerie-core:make-note
-  :id (format nil "D~A" (differential-comment-id comment))
+  :id (format nil "DiffNote~A" (differential-comment-id comment))
   :text (parse-comment (utf-8-bytes-to-string (differential-comment-content comment)))
   :author (convert-user-to-core (differential-comment-author comment))
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
@@ -1027,7 +1027,7 @@
 
 (defun convert-task-comment-to-core (comment)
  (forgerie-core:make-note
-  :id (format nil "T~A" (task-comment-id comment))
+  :id (format nil "TaskNote~A" (task-comment-id comment))
   :text (parse-comment (utf-8-bytes-to-string (task-comment-content comment)))
   :author (convert-user-to-core (task-comment-author comment))
   :date (unix-to-universal-time (task-comment-datecreated comment))))
@@ -1074,7 +1074,7 @@
     (t
      (values (intern (string-upcase action-type) :keyword) newvalue))))
   (forgerie-core:make-ticket-action
-   :id (format nil "T~A" (task-action-id action))
+   :id (format nil "TaskAction~A" (task-action-id action))
    :author (convert-user-to-core (task-action-author action))
    :date (unix-to-universal-time (task-action-datecreated action))
    :type type
