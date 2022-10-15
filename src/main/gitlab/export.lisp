@@ -42,17 +42,17 @@
         :gitlab-repository-has-illegal-name
         (forgerie-core:vc-repository-name vcr)
         (format nil "VC Repository '~A' has an illegal name due to starting with a space." (forgerie-core:vc-repository-name vcr))))
+      ((not (forgerie-core:vc-repository-commits vcr))
+       (forgerie-core:add-mapping-error
+        :source-repository-has-no-commits
+        (forgerie-core:vc-repository-name vcr)
+        (format nil "Source Repository '~A' has no commits.~%" (forgerie-core:vc-repository-name vcr))))
       ((not (forgerie-core:vc-repository-primary-projects vcr))
        (forgerie-core:add-mapping-error
         :gitlab-repository-has-no-projects
         (forgerie-core:vc-repository-name vcr)
         (format nil "VC Repository '~A' has no primary projects.~%" (forgerie-core:vc-repository-name vcr)))
-       vcr)
-      ((not (forgerie-core:vc-repository-commits vcr))
-       (forgerie-core:add-mapping-error
-        :source-repository-has-no-commits
-        (forgerie-core:vc-repository-name vcr)
-        (format nil "Source Repository '~A' has no commits.~%" (forgerie-core:vc-repository-name vcr)))
+       ;; include repository anyway
        vcr)
       ((not
         (remove-if-not
