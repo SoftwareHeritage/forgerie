@@ -829,11 +829,37 @@
          (forgerie-core:add-mapping-error
           :linked-ticket-not-found
           (forgerie-core:ticket-id linked-ticket)
-          (format nil "Link was between ~A and ~A" (forgerie-core:ticket-id ticket) (forgerie-core:ticket-id linked-ticket)))
-         (post-request
-          (format nil "projects/~A/issues/~A/links" (getf gl-ticket :project_id) (getf gl-ticket :iid))
-          `(("target_project_id" . ,(princ-to-string (getf gl-linked-ticket :project_id)))
-            ("target_issue_iid" . ,(princ-to-string (getf gl-linked-ticket :iid))))))))
+          (format nil "Link was between ~A and ~A"
+           (forgerie-core:ticket-id ticket) (forgerie-core:ticket-id linked-ticket)))
+         (let
+          ((post-result
+            (post-request
+             (format nil "projects/~A/issues/~A/links" (getf gl-ticket :project_id) (getf gl-ticket :iid))
+             `(("target_project_id" . ,(princ-to-string (getf gl-linked-ticket :project_id)))
+               ("target_issue_iid" . ,(princ-to-string (getf gl-linked-ticket :iid)))))))
+          (when post-result
+           (rails-commands-with-recovery
+            (apply #'append
+             (cons
+              (list
+              (format nil "l = IssueLink.find_by(:source_id => ~A, :target_id => ~A)"
+               (getf gl-ticket :id) (getf gl-linked-ticket :id))
+              "date = [l.source.created_at, l.target.created_at].max"
+              "l.created_at = l.updated_at = date"
+              "l.save")
+              (mapcar
+               (lambda (src dest)
+                (list
+                 (rails-wait-for "n"
+                  (format nil
+                   (concatenate 'string
+                    "Note.where('note like ?', 'marked this issue as related to %#~A')"
+                    ".where(system: true, noteable_id: ~A, noteable_type: 'Issue').take")
+                   (getf dest :iid) (getf src :id)))
+                 "n.created_at = n.updated_at = date"
+                 "n.save"))
+               (list gl-ticket gl-linked-ticket)
+               (list gl-linked-ticket gl-ticket))))))))))
       (forgerie-core:ticket-linked-tickets ticket)))
     (update-mapping (:ticket-links (forgerie-core:ticket-id ticket)))))))
 
