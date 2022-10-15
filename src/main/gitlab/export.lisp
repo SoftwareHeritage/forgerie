@@ -1223,21 +1223,31 @@
        :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-author mr))))))
    (when *notes-mode*
     (let
-     ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr))))
+     ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr)))
+      (actions-and-notes
+       (stable-sort
+        (copy-list
+         (append
+          (forgerie-core:merge-request-notes mr)
+          (forgerie-core:merge-request-actions mr)))
+        #'<
+        :key (lambda (action-or-note)
+              (ctypecase action-or-note
+               (forgerie-core:note (forgerie-core:note-date action-or-note))
+               (forgerie-core:merge-request-action (forgerie-core:merge-request-action-date action-or-note)))))))
      (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
      (update-updated-at "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr)
       :created-at t :metrics t)
-     (mapcar
-      (lambda (note) (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) note))
-      (forgerie-core:merge-request-notes mr))
-     (mapcar
+     (mapc
       (lambda (change)
        (create-change-comments gl-mr change))
       (forgerie-core:merge-request-changes mr))
-     (mapcar
-      (lambda (action)
-       (record-mr-action gl-mr mr action))
-      (forgerie-core:merge-request-actions mr))
+     (mapc
+      (lambda (action-or-note)
+       (ctypecase action-or-note
+        (forgerie-core:note (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid) action-or-note))
+        (forgerie-core:merge-request-action (record-mr-action gl-mr mr action-or-note))))
+      actions-and-notes)
      (when (eql :closed (forgerie-core:merge-request-type mr))
       (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
       (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
