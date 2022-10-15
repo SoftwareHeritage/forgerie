@@ -1105,7 +1105,7 @@
       (list
        (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
        (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-       "note = mr.notes.where(:system => true).order(:created_at => 'DESC').first"
+       (rails-wait-for "note" "mr.notes.where(:system => true).order(:created_at => 'DESC').first")
        "note.created_at = action_time"
        "note.updated_at = action_time"
        (format nil "note.author_id = ~A" user-id)
@@ -1166,9 +1166,9 @@
              nil)
             (t (error e)))))))
        (when post-result
-        (update-last-mr-system-note action-user-id)
         (update-last-mr-event :new-author action-user-id)
-        (update-last-mr-approval action-user-id))))
+        (update-last-mr-approval action-user-id)
+        (update-last-mr-system-note action-user-id))))
      (:reject
       (write-action-note)
       (let
