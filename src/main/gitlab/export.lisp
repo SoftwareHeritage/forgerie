@@ -404,20 +404,8 @@
           (apply #'append
            (mapcar
             (lambda (item)
-             (let
-              ((mi (find-mapped-item (car item) (parse-integer (cadr item))))
-               (c
-                (cond
-                 ((eql :ticket (car item)) "#")
-                 ((eql :merge-request (car item)) "!")
-                 ((eql :snippet (car item)) "$"))))
-              (list
-               (caddr item)
-               (if (equal (getf project :id) (mapped-item-project-id mi))
-                (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
-                (let
-                 ((other-project (find-project-by-id (mapped-item-project-id mi))))
-                 (format nil "~A~A~A" (getf other-project :path_with_namespace) c (or (mapped-item-iid mi) (mapped-item-id mi))))))))
+             (list (caddr item)
+              (mapped-item-reference (getf project :id) item)))
             mappings))))))
       (when body
        (when-unmapped (:commit-comment (forgerie-core:commit-sha commit))
@@ -553,20 +541,27 @@
          "obj.metrics.save"))
     "obj.save")))
 
+(defun mapped-item-reference (project-id item)
+ (let*
+  ((type (car item))
+   (c (ccase type
+       (:snippet "$")
+       (:ticket "#")
+       (:merge-request "!")))
+   (original-id (parse-integer (cadr item)))
+   (mi (find-mapped-item type original-id)))
+  (if (equal project-id (mapped-item-project-id mi))
+   (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
+   (let
+    ((other-project (find-project-by-id (mapped-item-project-id mi))))
+    (format nil "~A~A~A" (getf other-project :path_with_namespace) c (or (mapped-item-iid mi) (mapped-item-id mi)))))))
+
 (defun process-note-text (note-text project-id)
  (format nil "~{~A~}"
   (mapcar
    (lambda (item)
     (flet
      ((mapped-item-p (item type) (and (eql type (car item)) (find-mapped-item type (parse-integer (cadr item)))))
-      (handle-mapped-item (item type c)
-       (let
-        ((mi (find-mapped-item type (parse-integer (cadr item)))))
-        (if (equal project-id (mapped-item-project-id mi))
-         (format nil "~A~A" c (or (mapped-item-iid mi) (mapped-item-id mi)))
-         (let
-          ((other-project (find-project-by-id (mapped-item-project-id mi))))
-          (format nil "~A~A~A" (getf other-project :path_with_namespace) c (or (mapped-item-iid mi) (mapped-item-id mi)))))))
       (handle-file (file-id)
        (let
         ((file-response (create-file file-id project-id)))
@@ -580,9 +575,9 @@
       ((eql (car item) :h4) (format nil "~%#### ~A~%" (cadr item)))
       ((eql (car item) :h5) (format nil "~%##### ~A~%" (cadr item)))
       ((eql (car item) :link) (format nil "[~A](~A)" (cadr (cadr item)) (car (cadr item))))
-      ((mapped-item-p item :ticket) (handle-mapped-item item :ticket "#"))
-      ((mapped-item-p item :merge-request) (handle-mapped-item item :merge-request "!"))
-      ((mapped-item-p item :snippet) (handle-mapped-item item :snippet "$"))
+      ((mapped-item-p item :ticket) (mapped-item-reference project-id item))
+      ((mapped-item-p item :merge-request) (mapped-item-reference project-id item))
+      ((mapped-item-p item :snippet) (mapped-item-reference project-id item))
       ((find item *note-mapping-skips* :test #'equalp)
        (caddr item))
       (*notes-mode* (caddr item))
