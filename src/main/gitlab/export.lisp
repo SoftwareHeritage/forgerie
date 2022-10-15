@@ -1112,8 +1112,8 @@
            (git-cmd project "am" patch-file)
            (delete-file patch-file))))))
       (forgerie-core:merge-request-changes mr))
-     (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-     (git-cmd project "push" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+     (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+     (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
      (update-mapping (:merge-request (forgerie-core:merge-request-id mr))
       (post-request
        (format nil "projects/~A/merge_requests" (getf project :id))
