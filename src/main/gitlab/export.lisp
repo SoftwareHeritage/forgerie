@@ -1057,138 +1057,136 @@
          (t (error e))))))))
    (forgerie-core:merge-request-change-comments change))))
 
+(defun merge-request-action-text (action)
+ (ccase (forgerie-core:merge-request-action-type action)
+  (:abandon "abandoned")
+  (:close "merged")
+  (:accept "accepted")
+  (:reject "returned for changes")))
+
 (defvar *mr-state-map* nil)
 
 (defun record-mr-action (gl-mr forgerie-mr action)
- (flet
-  ((update-last-mr-event (&key new-author)
-    (update-event-date "MergeRequest"
-     (getf gl-mr :id)
-     (forgerie-core:merge-request-action-date action)
-     :new-author new-author))
-   (update-last-mr-rse ()
-    (rails-commands-with-recovery
-     (list
-      (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
-      (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-      "rse = mr.resource_state_events[-1]"
-      "rse.created_at = action_time"
-      "rse.save")))
-   (update-mr-updated-at (&key latest-closed-at)
-    (update-updated-at "MergeRequest"
-     (getf gl-mr :id)
-     (forgerie-core:merge-request-action-date action)
-     :metrics t :latest-closed-at latest-closed-at))
-   (update-last-mr-approval (user-id)
-    (rails-commands-with-recovery
-     (list
-      (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
-      (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-      "approval = mr.approvals.order(:created_at => 'DESC').first"
-      "approval.created_at = action_time"
-      "approval.updated_at = action_time"
-      (format nil "approval.user_id = ~A" user-id)
-      "approval.save")))
-   (update-last-mr-system-note (user-id)
-    (rails-commands-with-recovery
-     (list
-      (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
-      (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-      "note = mr.notes.where(:system => true).order(:created_at => 'DESC').first"
-      "note.created_at = action_time"
-      "note.updated_at = action_time"
-      (format nil "note.author_id = ~A" user-id)
-      "note.save")))
-   (update-mr-state (newstate)
-    (setf *mr-state-map* (acons (getf gl-mr :id) newstate *mr-state-map*)))
-   (get-mr-state () (or (cdr (assoc (getf gl-mr :id) *mr-state-map*)) (getf gl-mr :state)))
-   (write-action-note ()
-    (let*
-     ((action-type (forgerie-core:merge-request-action-type action))
-      (action-text
-       (case action-type
-        (:abandon "abandoned")
-        (:close "merged")
-        (:accept "accepted")
-        (:reject "returned for changes"))))
+ (when-unmapped (:merge-request-action (forgerie-core:merge-request-action-id action))
+  (flet
+   ((update-last-mr-event (&key new-author)
+     (update-event-date "MergeRequest"
+      (getf gl-mr :id)
+      (forgerie-core:merge-request-action-date action)
+      :new-author new-author))
+    (update-last-mr-rse ()
+     (rails-commands-with-recovery
+      (list
+       (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
+       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+       "rse = mr.resource_state_events[-1]"
+       "rse.created_at = action_time"
+       "rse.save")))
+    (update-mr-updated-at (&key latest-closed-at)
+     (update-updated-at "MergeRequest"
+      (getf gl-mr :id)
+      (forgerie-core:merge-request-action-date action)
+      :metrics t :latest-closed-at latest-closed-at))
+    (update-last-mr-approval (user-id)
+     (rails-commands-with-recovery
+      (list
+       (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
+       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+       "approval = mr.approvals.order(:created_at => 'DESC').first"
+       "approval.created_at = action_time"
+       "approval.updated_at = action_time"
+       (format nil "approval.user_id = ~A" user-id)
+       "approval.save")))
+    (update-last-mr-system-note (user-id)
+     (rails-commands-with-recovery
+      (list
+       (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
+       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+       "note = mr.notes.where(:system => true).order(:created_at => 'DESC').first"
+       "note.created_at = action_time"
+       "note.updated_at = action_time"
+       (format nil "note.author_id = ~A" user-id)
+       "note.save")))
+    (update-mr-state (newstate)
+     (setf *mr-state-map* (acons (getf gl-mr :id) newstate *mr-state-map*)))
+    (get-mr-state () (or (cdr (assoc (getf gl-mr :id) *mr-state-map*)) (getf gl-mr :state)))
+    (write-action-note ()
      (create-note (getf gl-mr :project_id) "merge_requests" (getf gl-mr :iid)
       (forgerie-core:make-note
-       :id (format nil "D~A-synthetic-~A-at-~A"
-            (forgerie-core:merge-request-id forgerie-mr)
-            action-text
-            (forgerie-core:merge-request-action-date action))
+       :id (format nil "NoteFor~A" (forgerie-core:merge-request-action-id action))
        :author (forgerie-core:merge-request-action-author action)
        :date (forgerie-core:merge-request-action-date action)
-       :text (list (format nil "Merge request was ~A" action-text)))))))
-  (let*
-   ((action-username
-     (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-action-author action))))
-    (action-user-id (getf (retrieve-mapping :user action-username) :id)))
-   (case (forgerie-core:merge-request-action-type action)
-    ((:abandon :close)
-     ;; Write a synthetic note explaining why the MR is closed
-     (write-action-note)
+       :text (list (format nil "Merge request was ~A" (merge-request-action-text action)))))))
+   (let*
+    ((action-username
+      (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-action-author action))))
+     (action-user-id (getf (retrieve-mapping :user action-username) :id)))
+    (case (forgerie-core:merge-request-action-type action)
+     ((:abandon :close)
+      ;; Write a synthetic note explaining why the MR is closed
+      (write-action-note)
 
-     ;; Close the MR
-     (when (string= (get-mr-state) "opened")
-      (put-request
-       (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
-       '(("state_event" . "close"))
-       :sudo action-username)
-      (update-last-mr-event)
-      (update-last-mr-rse)
-      (update-mr-updated-at :latest-closed-at t)
-      (update-mr-state "closed")))
-    (:ready
-     ;; Reopen the MR
-     (when (string= (get-mr-state) "closed")
-      (put-request
-       (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
-       '(("state_event" . "reopen"))
-       :sudo action-username)
-      (update-last-mr-event)
-      (update-last-mr-rse)
-      (update-mr-updated-at :latest-closed-at nil)
-      (update-mr-state "opened")))
-    (:accept
-     (write-action-note)
-     (let
-      ((post-result
-        (handler-case
-         (post-request
-          (format nil "/projects/~A/merge_requests/~A/approve" (getf gl-mr :project_id) (getf gl-mr :iid))
-          nil)
-         (http-error (e)
-          (cond
-           ((= 401 (http-error-code e))
-            nil)
-           ((= 403 (http-error-code e))
-            nil)
-           (t (error e)))))))
-      (when post-result
-       (update-last-mr-system-note action-user-id)
-       (update-last-mr-event :new-author action-user-id)
-       (update-last-mr-approval action-user-id))))
-    (:reject
-     (write-action-note)
-     (let
-      ((post-result
-        (handler-case
-         (post-request
-          (format nil "/projects/~A/merge_requests/~A/unapprove" (getf gl-mr :project_id) (getf gl-mr :iid))
-          nil
-          :sudo action-username)
-         (http-error (e)
-          (cond
-           ((= 404 (http-error-code e))
-            ;; merge request wasn't approved yet, ignore
-            nil)
-           ((= 403 (http-error-code e))
-            ;; merge request wasn't approved yet, ignore
-            nil)
-           (t (error e)))))))
-      (when post-result
-       (update-last-mr-event))))))))
+      ;; Close the MR
+      (when (string= (get-mr-state) "opened")
+       (put-request
+        (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
+        '(("state_event" . "close"))
+        :sudo action-username)
+       (update-last-mr-event)
+       (update-last-mr-rse)
+       (update-mr-updated-at :latest-closed-at t)
+       (update-mr-state "closed")))
+     (:ready
+      ;; Reopen the MR
+      (when (string= (get-mr-state) "closed")
+       (put-request
+        (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
+        '(("state_event" . "reopen"))
+        :sudo action-username)
+       (update-last-mr-event)
+       (update-last-mr-rse)
+       (update-mr-updated-at :latest-closed-at nil)
+       (update-mr-state "opened")))
+     (:accept
+      (write-action-note)
+      (let
+       ((post-result
+         (handler-case
+          (post-request
+           (format nil "/projects/~A/merge_requests/~A/approve" (getf gl-mr :project_id) (getf gl-mr :iid))
+           nil)
+          (http-error (e)
+           (cond
+            ((= 401 (http-error-code e))
+             nil)
+            ((= 403 (http-error-code e))
+             nil)
+            (t (error e)))))))
+       (when post-result
+        (update-last-mr-system-note action-user-id)
+        (update-last-mr-event :new-author action-user-id)
+        (update-last-mr-approval action-user-id))))
+     (:reject
+      (write-action-note)
+      (let
+       ((post-result
+         (handler-case
+          (post-request
+           (format nil "/projects/~A/merge_requests/~A/unapprove" (getf gl-mr :project_id) (getf gl-mr :iid))
+           nil
+           :sudo action-username)
+          (http-error (e)
+           (cond
+            ((= 404 (http-error-code e))
+             ;; merge request wasn't approved yet, ignore
+             nil)
+            ((= 403 (http-error-code e))
+             ;; merge request wasn't approved yet, ignore
+             nil)
+            (t (error e)))))))
+       (when post-result
+        (update-last-mr-event)))))))
+  (update-mapping (:merge-request-action (forgerie-core:merge-request-action-id action)))))
 
 (defun create-merge-request (mr)
  (single-project-check
