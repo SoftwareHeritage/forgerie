@@ -1229,13 +1229,19 @@
      (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
      (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
      (update-mapping (:merge-request (forgerie-core:merge-request-id mr))
-      (post-request
-       (format nil "projects/~A/merge_requests" (getf project :id))
-       `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-         ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
-         ("description" . ,(process-note-text (append (forgerie-core:merge-request-description mr) (list (merge-request-suffix mr))) (getf project :id)))
-         ("title" . ,(forgerie-core:merge-request-title mr)))
-       :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-author mr))))))
+      (let
+       ((gl-mr
+         (post-request
+          (format nil "projects/~A/merge_requests" (getf project :id))
+          `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+            ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+            ("description" . ,(process-note-text (append (forgerie-core:merge-request-description mr) (list (merge-request-suffix mr))) (getf project :id)))
+            ("title" . ,(forgerie-core:merge-request-title mr)))
+          :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-author mr))))))
+       (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
+       (update-updated-at "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr)
+        :created-at t :metrics t)
+       gl-mr)))
    (when *notes-mode*
     (let
      ((gl-mr (retrieve-mapping :merge-request (forgerie-core:merge-request-id mr)))
@@ -1250,9 +1256,6 @@
               (ctypecase action-or-note
                (forgerie-core:note (forgerie-core:note-date action-or-note))
                (forgerie-core:merge-request-action (forgerie-core:merge-request-action-date action-or-note)))))))
-     (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
-     (update-updated-at "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr)
-      :created-at t :metrics t)
      (mapc
       (lambda (change)
        (create-change-comments gl-mr change))
