@@ -12,7 +12,7 @@ as http requests, git commands, and database queries")
 
 (defun git-cmd (git-dir cmd args &key (error t) (debug *debug*) (input nil))
  (if debug
-  (format t "Executing git command ~A with args ~S in dir ~A" cmd args git-dir))
+  (format t "Executing git command ~A with args ~S in dir ~A~%" cmd args git-dir))
  (let*
   ((err nil)
    (out nil)

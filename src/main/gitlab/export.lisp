@@ -986,7 +986,10 @@
 (defun create-local-checkout (project)
  (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
   (ensure-directories-exist (format nil "~A~A/" *working-directory* (getf project :path)))
-  (git-cmd project "clone" "-o" "gitlab" (getf project :ssh_url_to_repo) ".")))
+  (git-cmd project "clone" "-o" "gitlab" (getf project :ssh_url_to_repo) "."))
+ (git-cmd-code project "am" "--abort")
+ (git-cmd project "reset" "--hard" "HEAD")
+ (git-cmd project "clean" "-fdx"))
 
 (defun create-change-comments (gl-mr change)
  (let*
@@ -1203,24 +1206,12 @@
      ; to create all the branches and whatnot.  The other option would be to add a mapping for
      ; the git work we need to do, but this seemed more elegant.
      (process-note-text (forgerie-core:merge-request-description mr) (getf project :id))
-     (when
-      (not
-       (zerop
-        (git-cmd-code project "show-ref" "--verify" "--quiet"
-         (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))))))
-      (git-cmd project "branch"
-       (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
-       (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
-     (when
-      (not
-       (zerop
-        (git-cmd-code project "show-ref" "--verify" "--quiet"
-         (format nil "refs/heads/~A" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))))
-      (git-cmd project "branch"
-       (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
-       (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
-     (git-cmd project "checkout"
-      (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+     (git-cmd project "branch" "-f"
+      (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
+      (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+     (git-cmd project "switch" "-C"
+      (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
+      (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
      (mapcar
       (lambda (change)
        (let
