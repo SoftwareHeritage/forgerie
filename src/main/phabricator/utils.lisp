@@ -124,10 +124,10 @@
       (let
        ((,obj ,item))
        (with-open-file (str ,cache-path :direction :output :if-exists :supersede)
-        (format str "~S" ,obj))
+        (format str "~S~%" ,obj))
        ,obj)))
     (let
      ((,obj ,item))
      (with-open-file (str ,cache-path :direction :output :if-exists :supersede)
-      (format str "~S" ,obj))
+      (format str "~S~%" ,obj))
      ,obj)))))
