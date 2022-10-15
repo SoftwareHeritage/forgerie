@@ -428,6 +428,8 @@
          (post-request
           (format nil "/projects/~A/repository/commits/~A/comments" (getf project :id) (forgerie-core:commit-sha commit))
           `(("note" . ,body)))
+
+         ;; Update date for the note generated above
          (rails-commands-with-recovery
           (list
            (rails-wait-for
@@ -437,25 +439,35 @@
              (forgerie-core:commit-sha commit) (getf project :id)))
            "n.created_at = n.commit.date"
            "n.updated_at = n.commit.date"
-           "n.save"))
+           "n.save"
+           (rails-wait-for "ev" "Event.find_by(:target_type => 'Note', :target_id => n.id)")
+           "ev.created_at = n.commit.date"
+           "ev.updated_at = n.commit.date"
+           "ev.save"))
+
+         ;; update backlinks to the previous note
          (mapc
           (lambda (item)
            (let
             ((mi (find-mapped-item (car item) (parse-integer (cadr item))))
-             (notable-type
+             (noteable-type
               (cond
+               ((eql :snippet (car item)) nil) ; Snippets don't get back-links
                ((eql :ticket (car item)) "Issue")
-               ((eql :merge-request (car item)) "MergeRequest")
-               ((eql :snippet (car item)) "Snippet"))))
-            (rails-commands-with-recovery
-             (list
-              (format nil "n = Note.where(:noteable_type => '~A', :project_id => ~A, :noteable_id => ~A).order(:created_at => 'DESC').first"
-               notable-type (getf project :id) (mapped-item-id mi))
-              (format nil "commit_date = Time.parse('~A')" (getf commit-in-gitlab :authored_date))
-              "n.created_at = commit_date"
-              "n.updated_at = commit_date"
-              "n.save"))))
+               ((eql :merge-request (car item)) "MergeRequest"))))
+            (when noteable-type
+             (rails-commands-with-recovery
+              (list
+               (format nil "commit_date = Time.parse('~A')" (getf commit-in-gitlab :authored_date))
+               (rails-wait-for
+                "n"
+                (format nil "Note.where(:noteable_type => '~A', :noteable_id => ~A, :system => true).where('note like ?', 'mentioned in commit %~A').order(:created_at => 'DESC').first"
+                 noteable-type (mapped-item-id mi) (forgerie-core:commit-sha commit)))
+               "n.created_at = commit_date"
+               "n.updated_at = commit_date"
+               "n.save")))))
           mappings)
+
          (update-mapping (:commit-comment (forgerie-core:commit-sha commit))))))))
     (forgerie-core:vc-repository-commits vc-repository)))))
 
