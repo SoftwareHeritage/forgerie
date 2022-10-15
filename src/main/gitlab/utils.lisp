@@ -272,10 +272,10 @@
       ((or sb-int:broken-pipe end-of-file)
        (condition)
        (format t "Got error ~A when running rails commands~%" condition)
-       (when (= times 2)
-        (error "Failed to run rails commands ~A times: ~A~%" (+ times 1) commands))
        (incf times)
-       (let ((nsecs (ash 1 (+ times 1))))  ;; 4 8 16
+       (when (= times 5)
+        (error "Failed to run rails commands ~A times: ~A~%" times commands))
+       (let ((nsecs (min 60 (+ 10 (ash 1 (+ times 1))))))  ;; 14s, 18s, 26s, 42s, then clamp to 60s
         (format t "Sleeping for ~As~%" nsecs)
         (sleep nsecs)
         (sb-ext:process-close *rails-connection*)
