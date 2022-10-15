@@ -936,12 +936,19 @@
   :date (unix-to-universal-time (differential-comment-datecreated comment))))
 
 (defun convert-differential-action-newvalue-to-core (newvalue)
-  (cond ((string= newvalue "close") :close)
-        ((string= newvalue "accept") :accept)
-        ((string= newvalue "reject") :reject)
-        ((string= newvalue "abandon") :abandon)
-        ((string= newvalue "commit") :close)
-        (t (error "unknown differential action ~A" newvalue))))
+ (cond
+  ((string= newvalue "close") :close)
+  ((string= newvalue "abandon") :abandon)
+  ((string= newvalue "abandoned") :abandon)
+  ((string= newvalue "accept") :accept)
+  ((string= newvalue "accepted") :accept)
+  ((string= newvalue "commit") :close)
+  ((string= newvalue "committed") :close)
+  ((string= newvalue "needs-review") :ready)
+  ((string= newvalue "needs-revision") :reject)
+  ((string= newvalue "reject") :reject)
+  ((string= newvalue "rejected") :reject)
+  (t (error "unknown differential action ~A" newvalue))))
 
 (defun convert-differential-action-to-core (action)
   (forgerie-core:make-merge-request-action
