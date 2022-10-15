@@ -400,7 +400,7 @@
          comment))
        (body
         (when mappings
-         (format nil "Commit comment has updated locations:~%~%~{* ~A is now ~A~%~}"
+         (format nil "Some references in the commit message have been migrated:~%~%~{* ~A is now ~A~%~}"
           (apply #'append
            (mapcar
             (lambda (item)
@@ -526,18 +526,19 @@
      (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
      (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project))))))
 
-(defun update-event-date (obj-type obj-id new-date &key extra-filter)
+(defun update-event-date (obj-type obj-id new-date &key extra-filter new-author)
  (let
   ((find-ev-command
     (format nil "Event.where(:target => ~A, :target_type => '~A').where(\"created_at > ?\", action_time)~@[~A~].order(:created_at => 'DESC').first"
      obj-id obj-type extra-filter)))
   (rails-commands-with-recovery
-   (list
-    (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
-    (rails-wait-for "ev" find-ev-command)
-    "ev.created_at = action_time"
-    "ev.updated_at = action_time"
-    "ev.save"))))
+   `(
+     ,(format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
+     ,(rails-wait-for "ev" find-ev-command)
+     ,@(when new-author (list (format nil "ev.author_id = ~A" new-author)))
+     "ev.created_at = action_time"
+     "ev.updated_at = action_time"
+     "ev.save"))))
 
 (defun update-updated-at (obj-type obj-id new-date &key metrics created-at latest-closed-at)
  (rails-commands-with-recovery
