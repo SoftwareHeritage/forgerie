@@ -844,7 +844,10 @@
  (let
   ; This is an oddity in how phabricator represents this part of markdown, and thus it's converted
   ; to actual markdown (checkbox list items need to be prefaced by a list element like -)
-  ((comment (cl-ppcre:regex-replace-all "\\n( *)\\[(.)\\]" comment (format nil "~%\\1 - [\\2]"))))
+  ((comment
+    (labels ((list-item-prefix (match m1 m2)
+              (format nil "~A - [~A]" m1 (if (string= m2 "") " " m2))))
+     (cl-ppcre:regex-replace-all "(?m)^( *)\\[(.?)\\]" comment #'list-item-prefix :simple-calls t))))
   (labels
    ((first-instance-of (regex type &key with-aftercheck (comment comment))
      (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan regex comment)
