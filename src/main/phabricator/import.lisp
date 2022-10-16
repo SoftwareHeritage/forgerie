@@ -840,6 +840,19 @@
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
     (query "select id, title, summary, testplan, phid, status, repositoryphid, datecreated, authorphid, activediffphid from phabricator_differential.differential_revision")))))
 
+(defvar *comment-regexes*
+ (list
+  (cons :h1 (cl-ppcre:create-scanner "(?:^|\\n)= +(.*?)[ =]*\\n"))
+  (cons :h2 (cl-ppcre:create-scanner "(?:^|\\n)== +(.*?)[ =]*\\n"))
+  (cons :h3 (cl-ppcre:create-scanner "(?:^|\\n)=== +(.*?)[ =]*\\n"))
+  (cons :h4 (cl-ppcre:create-scanner "(?:^|\\n)==== +(.*?)[ =]*\\n"))
+  (cons :h5 (cl-ppcre:create-scanner "(?:^|\\n)===== +(.*?)[ =]*\\n"))
+  (cons :link (cl-ppcre:create-scanner "\\[\\[ *([^|\\n]*?) *\\| *([^\\]\\n]*?) *\\]\\]"))
+  (cons :file (cl-ppcre:create-scanner "\{F(\\d+)\}"))
+  (cons :ticket (cl-ppcre:create-scanner "\\bT([1-9]\\d{0,4})(#\\d+)?\\b"))
+  (cons :snippet (cl-ppcre:create-scanner "\\bP([1-9]\\d{0,4})(#\\d+)?\\b"))
+  (cons :merge-request (cl-ppcre:create-scanner "\\bD([1-9]\\d{0,4})(#\\d+)?\\b"))))
+
 (defun parse-comment (comment)
  (let
   ; This is an oddity in how phabricator represents this part of markdown, and thus it's converted
@@ -849,8 +862,8 @@
               (format nil "~A - [~A]" m1 (if (string= m2 "") " " m2))))
      (cl-ppcre:regex-replace-all "(?m)^( *)\\[(.?)\\]" comment #'list-item-prefix :simple-calls t))))
   (labels
-   ((first-instance-of (regex type &key with-aftercheck (comment comment))
-     (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan regex comment)
+   ((first-instance-of (type &key with-aftercheck (comment comment))
+     (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan (cdr (assoc type *comment-regexes*)) comment)
       (cond
        ((not start) nil)
        ((eql type :link)
@@ -862,9 +875,9 @@
        ((or (zerop start) (= end (length comment)))
         (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))
        ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment (1- start) start)))
-        (first-instance-of regex type :comment (subseq comment end)))
+        (first-instance-of type :comment (subseq comment end)))
        ((and with-aftercheck (cl-ppcre:scan "[\\d\\w]" (subseq comment end (1+ end))))
-        (first-instance-of regex type :comment (subseq comment end)))
+        (first-instance-of type :comment (subseq comment end)))
        (t
         (list start end type (subseq comment (aref match-starts 0) (aref match-ends 0)) (subseq comment start end)))))))
    (let*
@@ -872,17 +885,9 @@
       (car
        (sort
         (remove-if-not #'identity
-         (list
-          (first-instance-of "\\n= ([^\\n]*) =\\n" :h1)
-          (first-instance-of "\\n== ([^\\n]*) ==\\n" :h2)
-          (first-instance-of "\\n=== ([^\\n]*) ===\\n" :h3)
-          (first-instance-of "\\n==== ([^\\n]*) ====\\n" :h4)
-          (first-instance-of "\\n===== ([^\\n]*) =====\\n" :h5)
-          (first-instance-of "\\[\\[ *([^|]*?) *\\| *([^\\]]*?) *\\]\\]" :link)
-          (first-instance-of "\{F(\\d+)\}" :file)
-          (first-instance-of "\\bT([1-9]\\d{0,4})(#\\d+)?\\b" :ticket)
-          (first-instance-of "\\bP([1-9]\\d{0,4})(#\\d+)?\\b" :snippet)
-          (first-instance-of "\\bD([1-9]\\d{0,4})(#\\d+)?\\b" :merge-request)))
+         (mapcar
+          #'first-instance-of
+          (mapcar #'car *comment-regexes*)))
         #'<
         :key #'car))))
     (when
