@@ -90,6 +90,12 @@ docker instead.")
 
  Useful to create a link to the previous system on files that are not migrated yet")
 
+(defvar *fallback-mapped-item-text* nil
+ "A function that takes an argument of a mapped item reference (as can be found in notes),
+ and returns the (markdown) text that will be output when the mapped item is not found.
+
+ Useful to create a link to the previous system on references that are not migrated yet")
+
 (defvar *limit-to-active-users* nil
  "If non nil, will only add users to the gitlab instance if they are active in the
  items also coming over for processing.  Useful when doing piecemeal conversions.")

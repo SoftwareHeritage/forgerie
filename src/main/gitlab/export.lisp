@@ -579,8 +579,8 @@
       ((mapped-item-p item :merge-request) (mapped-item-reference project-id item))
       ((mapped-item-p item :snippet) (mapped-item-reference project-id item))
       ((find item *note-mapping-skips* :test #'equalp)
-       (caddr item))
-      (*notes-mode* (caddr item))
+       (fallback-mapped-item-text item))
+      (*notes-mode* (fallback-mapped-item-text item))
       (t (error (make-instance 'unknown-note-mapping :mapping item))))))
    note-text)))
 

@@ -103,6 +103,11 @@
   (format nil "File <~A (id=~A)> too large, skipped upload"
    (forgerie-core:file-name file) (forgerie-core:file-id file))))
 
+(defun fallback-mapped-item-text (item)
+ (if *fallback-mapped-item-text*
+  (funcall *fallback-mapped-item-text* item)
+  (caddr item)))
+
 (defun namespace-for-repo (repository)
  (if
   *namespace-for-repo*
