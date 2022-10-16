@@ -520,6 +520,13 @@
      (uiop/filesystem:delete-directory-tree (pathname working-path) :validate t)
      (update-mapping (:project (forgerie-core:vc-repository-slug vc-repository)) gl-project))))))
 
+(defun update-project-archived-status (vc-repository)
+ (single-project-check (forgerie-core:vc-repository-name vc-repository)
+  (when (forgerie-core:vc-repository-archived vc-repository)
+   (when-unmapped-with-update (:project-archived (forgerie-core:vc-repository-slug vc-repository))
+    (let ((gl-project (find-mapped-item :project (forgerie-core:vc-repository-slug vc-repository))))
+     (post-request (format nil "projects/~A/archive" (mapped-item-id gl-project)) nil))))))
+
 (defun update-event-date (obj-type obj-id new-date &key extra-filter new-author)
  (let
   ((find-ev-command

@@ -22,4 +22,7 @@
 
  ; repository access policy - one of :public, :internal, :private
  access-policy
+
+ ; whether the repository is archived or not
+ archived
  commits)

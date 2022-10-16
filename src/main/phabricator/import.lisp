@@ -19,7 +19,7 @@
 (getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
-(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid viewpolicy)
+(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid viewpolicy archived)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments git-comment)
 (getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers actions)
 (getf-convenience task-comment id author authorphid content datecreated)
@@ -287,7 +287,10 @@
 
 (defun get-repository-query (&optional filter)
  (query
-  (format nil "select id, phid, repositoryslug, name, localpath, spacephid, viewpolicy from phabricator_repository.repository~@[ where ~A~]" filter)))
+  (format nil "select id, phid, repositoryslug, name, localpath, spacephid, viewpolicy,
+         (details like '%\"tracking-enabled\":\"inactive\"%'
+          or details like '%\"tracking-enabled\":\"inactive\"%')
+          as archived from phabricator_repository.repository~@[ where ~A~]" filter)))
 
 (defun get-repository (phid)
  (attach-projects-to-repository
@@ -1018,6 +1021,7 @@
   :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
   :git-location (repository-localpath repository-def)
   :access-policy (convert-access-policy-to-core repository-def)
+  :archived (= 1 (repository-archived repository-def))
   :commits (mapcar #'convert-commit-to-core (repository-commits repository-def))))
 
 (defun convert-project-to-core (project-def)
