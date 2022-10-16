@@ -19,7 +19,7 @@
 (getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
-(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid)
+(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid viewpolicy)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments git-comment)
 (getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers actions)
 (getf-convenience task-comment id author authorphid content datecreated)
@@ -285,29 +285,24 @@
      (mapcar #'car (get-shas-and-details repo)))))
   repo))
 
+(defun get-repository-query (&optional filter)
+ (query
+  (format nil "select id, phid, repositoryslug, name, localpath, spacephid, viewpolicy from phabricator_repository.repository~@[ where ~A~]" filter)))
+
 (defun get-repository (phid)
  (attach-projects-to-repository
   (first
-   (query
-    (format nil
-     "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where phid = '~A'"
-     phid)))))
+   (get-repository-query (format nil "phid = '~A'" phid)))))
 
 (defun get-repository-by-slug (slug)
  (attach-projects-to-repository
   (first
-   (query
-    (format nil
-     "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where repositoryslug = '~A'"
-     slug)))))
+   (get-repository-query (format nil "repositoryslug = '~A'" slug)))))
 
 (defun get-repository-by-id (id)
  (attach-projects-to-repository
   (first
-   (query
-    (format nil
-     "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where id = '~A'"
-     id)))))
+   (get-repository-query (format nil "id = '~A'" id)))))
 
 (defun get-repositories ()
  (let
@@ -317,7 +312,7 @@
       (and
        *included-repositories*
        (not (find (repository-repositoryslug repository) *included-repositories* :test #'string=))))
-     (query "select id, phid, repositoryslug, name, localpath, spacephid from phabricator_repository.repository where repositoryslug is not null"))))
+     (get-repository-query "repositoryslug is not null"))))
   (mapcar #'annotate-repository-commits
    (mapcar #'attach-projects-to-repository
     (remove-if
@@ -397,7 +392,7 @@
                   :direction :output
                   :if-exists :append
                   :if-does-not-exist :create)
-  (format str "~S" id)))
+  (format str "~S~%" id)))
 
 (defun add-author-to-paste-comment (comment)
  (append
@@ -1004,6 +999,17 @@
    :notes (mapcar #'convert-differential-comment-to-core (differential-revision-comments revision-def))
    :actions (mapcar #'convert-differential-action-to-core (differential-revision-actions revision-def)))))
 
+(defun convert-access-policy-to-core (repository-def)
+ (let ((viewpolicy (repository-viewpolicy repository-def)))
+  (cond
+   ((find (repository-spacephid repository-def) *confidential-space-phids* :test #'string=)
+    :private)
+   ((str:starts-with? "PHID-USER-" viewpolicy) :private)
+   ((str:starts-with? "PHID-PROJ-" viewpolicy) :private)
+   ((string= viewpolicy "users") :internal)
+   ((string= viewpolicy "public") :public)
+   (t (error "Could not figure out access policy for repository ~A" repository-def)))))
+
 (defun convert-repository-to-core (repository-def)
  (forgerie-core:make-vc-repository
   :name (repository-name repository-def)
@@ -1011,7 +1017,7 @@
   :projects (mapcar #'convert-project-to-core (repository-projects repository-def))
   :primary-projects (mapcar #'convert-project-to-core (repository-primary-projects repository-def))
   :git-location (repository-localpath repository-def)
-  :private (not (not (find (repository-spacephid repository-def) *confidential-space-phids* :test #'string=)))
+  :access-policy (convert-access-policy-to-core repository-def)
   :commits (mapcar #'convert-commit-to-core (repository-commits repository-def))))
 
 (defun convert-project-to-core (project-def)

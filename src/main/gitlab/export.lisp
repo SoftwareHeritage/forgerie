@@ -459,6 +459,12 @@
          (update-mapping (:commit-comment (forgerie-core:commit-sha commit))))))))
     (forgerie-core:vc-repository-commits vc-repository)))))
 
+(defun repo-access-policy-to-string (vc-repository)
+ (ccase (forgerie-core:vc-repository-access-policy vc-repository)
+  (:public "public")
+  (:private "private")
+  (:internal "internal")))
+
 ; Projects are created from vc repositories, since they are linked in gitlab.
 ; Some of the underlying information comes from core:projects that are
 ; the primary projects of the vc-repository
@@ -491,7 +497,7 @@
           ("path" . ,(forgerie-core:vc-repository-slug vc-repository))
           ("tag_list" . ,(format nil "~{~A~^,~}" tags))
           ("issues_access_level" . "enabled")
-          ("visibility" . ,(if (forgerie-core:vc-repository-private vc-repository) "private" "public"))
+          ("visibility" . ,(repo-access-policy-to-string vc-repository))
           ("merge_requests_access_level" . "enabled")
           ("auto_devops_enabled" . "false")
           ("wiki_access_level" . "disabled")

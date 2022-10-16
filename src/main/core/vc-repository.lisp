@@ -19,5 +19,7 @@
  primary-projects
  git-location
  projects
- private
+
+ ; repository access policy - one of :public, :internal, :private
+ access-policy
  commits)
