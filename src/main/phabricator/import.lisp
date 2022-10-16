@@ -875,7 +875,7 @@
           (first-instance-of "\\n=== ([^\\n]*) ===\\n" :h3)
           (first-instance-of "\\n==== ([^\\n]*) ====\\n" :h4)
           (first-instance-of "\\n===== ([^\\n]*) =====\\n" :h5)
-          (first-instance-of "\\[\\[ *([^| ]*) *\\| *([^\\]]*) *\\]\\]" :link)
+          (first-instance-of "\\[\\[ *([^|]*?) *\\| *([^\\]]*?) *\\]\\]" :link)
           (first-instance-of "\{F(\\d+)\}" :file)
           (first-instance-of "\\bT([1-9]\\d{0,4})(#\\d+)?\\b" :ticket)
           (first-instance-of "\\bP([1-9]\\d{0,4})(#\\d+)?\\b" :snippet)
