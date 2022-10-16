@@ -1201,11 +1201,13 @@
     (when-unmapped (:merge-request (forgerie-core:merge-request-id mr))
      (when (not project)
       (error "Could not find project with slug: ~A" (forgerie-core:vc-repository-slug vc-repo)))
-     (create-local-checkout project)
+     (when forgerie-core:*debug*
+      (format t "Processing merge request ~A~%" (forgerie-core:merge-request-id mr)))
      ; We do this first, because if this errors, we want to bomb out first without doing the work
      ; to create all the branches and whatnot.  The other option would be to add a mapping for
      ; the git work we need to do, but this seemed more elegant.
      (process-note-text (forgerie-core:merge-request-description mr) (getf project :id))
+     (create-local-checkout project)
      (git-cmd project "branch" "-f"
       (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
       (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
