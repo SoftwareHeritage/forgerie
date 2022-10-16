@@ -1182,9 +1182,13 @@
            (cond
             ((= 404 (http-error-code e))
              ;; merge request wasn't approved yet, ignore
+             (when forgerie-core:*debug*
+              (format t "Failed to unapprove MR D~A: ~A" (forgerie-core:merge-request-id forgerie-mr) e))
              nil)
             ((= 403 (http-error-code e))
              ;; merge request wasn't approved yet, ignore
+             (when forgerie-core:*debug*
+              (format t "Failed to unapprove MR D~A: ~A" (forgerie-core:merge-request-id forgerie-mr) e))
              nil)
             (t (error e)))))))
        (when post-result
