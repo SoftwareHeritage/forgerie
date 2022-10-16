@@ -877,9 +877,9 @@
           (first-instance-of "\\n===== ([^\\n]*) =====\\n" :h5)
           (first-instance-of "\\[\\[ *([^| ]*) *\\| *([^\\]]*) *\\]\\]" :link)
           (first-instance-of "\{F(\\d+)\}" :file)
-          (first-instance-of "T(\\d+)(#\\d+)?" :ticket)
-          (first-instance-of "P(\\d+)(#\\d+)?" :snippet)
-          (first-instance-of "D(\\d+)(#\\d+)?" :merge-request)))
+          (first-instance-of "\\bT([1-9]\\d{0,4})(#\\d+)?\\b" :ticket)
+          (first-instance-of "\\bP([1-9]\\d{0,4})(#\\d+)?\\b" :snippet)
+          (first-instance-of "\\bD([1-9]\\d{0,4})(#\\d+)?\\b" :merge-request)))
         #'<
         :key #'car))))
     (when
