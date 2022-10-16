@@ -857,8 +857,8 @@
   ; to actual markdown (checkbox list items need to be prefaced by a list element like -)
   ((comment
     (labels ((list-item-prefix (match m1 m2)
-              (format nil "~A - [~A]" m1 (if (string= m2 "") " " m2))))
-     (cl-ppcre:regex-replace-all "(?m)^( *)\\[(.?)\\]" comment #'list-item-prefix :simple-calls t))))
+              (format nil "~A- [~A]" m1 (if (string= m2 "") " " m2))))
+     (cl-ppcre:regex-replace-all "(?m)^( *)(?:- )?\\[(.?)\\]" comment #'list-item-prefix :simple-calls t))))
   (labels
    ((first-instance-of (type &key with-aftercheck (comment comment))
      (multiple-value-bind (start end match-starts match-ends) (cl-ppcre:scan (cdr (assoc type *comment-regexes*)) comment)
