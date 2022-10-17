@@ -19,7 +19,7 @@
 (getf-convenience paste-comment id author authorphid content datecreated)
 (getf-convenience project id phid icon name tags)
 (getf-convenience project-slug slug)
-(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid viewpolicy archived)
+(getf-convenience repository id phid repositoryslug name localpath projects primary-projects commits spacephid viewpolicy archived defaultbranch)
 (getf-convenience repository-commit id phid repositoryid commitidentifier parents patch comments git-comment)
 (getf-convenience task id phid title status projects comments owner author ownerphid authorphid description datecreated priority spacephid linked-tasks subscribers actions)
 (getf-convenience task-comment id author authorphid content datecreated)
@@ -287,10 +287,11 @@
 
 (defun get-repository-query (&optional filter)
  (query
-  (format nil "select id, phid, repositoryslug, name, localpath, spacephid, viewpolicy,
-         (details like '%\"tracking-enabled\":\"inactive\"%'
-          or details like '%\"tracking-enabled\":false%')
-          as archived from phabricator_repository.repository~@[ where ~A~]" filter)))
+  (format nil
+   "select id, phid, repositoryslug, name, localpath, spacephid, viewpolicy,
+           coalesce(json_unquote(json_extract(details, '$.\"default-branch\"')), '') as defaultbranch,
+           coalesce(json_unquote(json_extract(details, '$.\"tracking-enabled\"')), 'true') in ('inactive', 'false') as archived
+    from phabricator_repository.repository~@[ where ~A~]" filter)))
 
 (defun get-repository (phid)
  (attach-projects-to-repository
@@ -971,7 +972,8 @@
       :closed)
      ((find (differential-revision-status revision-def) (list "changes-planned" "needs-review" "needs-revision" "accepted" "draft") :test #'string=)
       :open)
-     (t (error "Unknown revision type: ~A" (differential-revision-status revision-def))))))
+     (t (error "Unknown revision type: ~A" (differential-revision-status revision-def)))))
+   (core-repository (convert-repository-to-core (differential-revision-repository revision-def))))
 
   (forgerie-core:make-merge-request
    :id (differential-revision-id revision-def)
@@ -984,14 +986,16 @@
       (format nil "~%~%== Test Plan ==~%~%~A" (utf-8-bytes-to-string (differential-revision-testplan revision-def)))
       "")))
    :author (convert-user-to-core (differential-revision-author revision-def))
-   :vc-repository (convert-repository-to-core (differential-revision-repository revision-def))
+   :vc-repository core-repository
    :date (unix-to-universal-time (differential-revision-datecreated revision-def))
    :type type
    :target-branch
    (forgerie-core:make-branch
     :name
-    ; Defaults to master, but that may be wrong after more investigation
-    (if (eql :open type) "master" (format nil "generated-differential-D~A-target" (differential-revision-id revision-def)))
+    ; Defaults to the repository's default branch
+    (if (eql :open type)
+     (forgerie-core:vc-repository-default-branch-name core-repository)
+     (format nil "generated-differential-D~A-target" (differential-revision-id revision-def)))
     :commit (convert-commit-to-core (car (repository-commit-parents (car (differential-revision-related-commits revision-def))))))
    :source-branch
    (forgerie-core:make-branch
@@ -1014,6 +1018,14 @@
    ((string= viewpolicy "public") :public)
    (t (error "Could not figure out access policy for repository ~A" repository-def)))))
 
+(defun convert-branchname-to-core (repository-def)
+ (let
+  ((branchname (repository-defaultbranch repository-def)))
+  (if
+   (or (not branchname) (string= "" branchname))
+   "master"
+   branchname)))
+
 (defun convert-repository-to-core (repository-def)
  (forgerie-core:make-vc-repository
   :name (repository-name repository-def)
@@ -1023,6 +1035,7 @@
   :git-location (repository-localpath repository-def)
   :access-policy (convert-access-policy-to-core repository-def)
   :archived (= 1 (repository-archived repository-def))
+  :default-branch-name (convert-branchname-to-core repository-def)
   :commits (mapcar #'convert-commit-to-core (repository-commits repository-def))))
 
 (defun convert-project-to-core (project-def)

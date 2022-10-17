@@ -25,4 +25,7 @@
 
  ; whether the repository is archived or not
  archived
+
+ ; the repository's default branch name
+ default-branch-name
  commits)

@@ -30,7 +30,7 @@
 
   ; vc-repository.lisp
   #:make-vc-repository #:vc-repository-name #:vc-repository-slug #:vc-repository-primary-projects #:vc-repository-projects
-  #:vc-repository-git-location #:vc-repository-commits #:vc-repository-access-policy #:vc-repository-archived
+  #:vc-repository-git-location #:vc-repository-commits #:vc-repository-access-policy #:vc-repository-archived #:vc-repository-default-branch-name
 
   ; snippet.lisp
   #:make-snippet #:snippet-id #:snippet-title #:snippet-files #:snippet-notes #:snippet-author #:snippet-date #:snippet-private #:snippet
