@@ -1247,7 +1247,8 @@
            (delete-file patch-file))))))
       (forgerie-core:merge-request-changes mr))
      (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-     (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+     (when (string/= "master" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+      (git-cmd project "push" "-f" "gitlab" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
      (update-mapping (:merge-request (forgerie-core:merge-request-id mr))
       (let
        ((gl-mr
