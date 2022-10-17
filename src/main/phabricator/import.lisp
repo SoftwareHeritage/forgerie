@@ -1009,6 +1009,7 @@
     :private)
    ((str:starts-with? "PHID-USER-" viewpolicy) :private)
    ((str:starts-with? "PHID-PROJ-" viewpolicy) :private)
+   ((str:starts-with? "PHID-PLCY-" viewpolicy) :private)
    ((string= viewpolicy "users") :internal)
    ((string= viewpolicy "public") :public)
    (t (error "Could not figure out access policy for repository ~A" repository-def)))))
