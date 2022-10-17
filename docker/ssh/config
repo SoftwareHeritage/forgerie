@@ -4,3 +4,6 @@ Host gitlab-staging.swh.network
   IdentityFile ~/.ssh/id_ed25519
   StrictHostKeyChecking no
   UserKnownHostsFile=/dev/null
+  ControlMaster auto
+  ControlPath ~/.ssh/control-%r@%h:%p
+  ControlPersist 10
