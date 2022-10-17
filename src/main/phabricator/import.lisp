@@ -289,7 +289,7 @@
  (query
   (format nil "select id, phid, repositoryslug, name, localpath, spacephid, viewpolicy,
          (details like '%\"tracking-enabled\":\"inactive\"%'
-          or details like '%\"tracking-enabled\":\"inactive\"%')
+          or details like '%\"tracking-enabled\":false%')
           as archived from phabricator_repository.repository~@[ where ~A~]" filter)))
 
 (defun get-repository (phid)
