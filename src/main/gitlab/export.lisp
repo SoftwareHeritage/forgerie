@@ -380,6 +380,7 @@
       (push first-error *note-mapping-skips*))))
   (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)
   (mapcar #'add-commit-comments vc-repositories)
+  (mapcar #'update-project-archived-status vc-repositories)
   (mapcar #'update-user-admin-status (validate-users (getf data :users)))))
 
 (defun add-commit-comments (vc-repository)
