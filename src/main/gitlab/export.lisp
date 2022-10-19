@@ -315,8 +315,11 @@
 
 (defun user-must-be-migrated (user)
   (if *limit-to-active-users*
-   ; Only add admins if we're limiting
-   (forgerie-core:user-admin user)
+   (or
+    ; migrate admins
+    (forgerie-core:user-admin user)
+    ; migrate users that we've forced the migration of
+    (find (forgerie-core:user-username user) *always-migrate-users* :test #'string=))
    t))
 
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)

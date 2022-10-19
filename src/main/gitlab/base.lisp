@@ -99,3 +99,8 @@ docker instead.")
 (defvar *limit-to-active-users* nil
  "If non nil, will only add users to the gitlab instance if they are active in the
  items also coming over for processing.  Useful when doing piecemeal conversions.")
+
+(defvar *always-migrate-users* nil
+ "A list of usernames of users that should always be migrated, even when only migrating
+ active users. Useful to give all of your known contributors an account at once, even on
+ a partial migration.")
