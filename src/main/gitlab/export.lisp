@@ -313,6 +313,12 @@
     ; Gitlab returns immediately even though the project is being deleted....
     (sleep 60)))))
 
+(defun user-must-be-migrated (user)
+  (if *limit-to-active-users*
+   ; Only add admins if we're limiting
+   (forgerie-core:user-admin user)
+   t))
+
 (defmethod forgerie-core:export-forge ((forge (eql :gitlab)) data)
  (setf *working-directory* (format nil "~Agitlab/" forgerie-core:*working-directory*))
  (forgerie-core:check-for-stop)
@@ -330,10 +336,7 @@
    (tickets (remove-if-not #'identity (validate-tickets (getf data :tickets) vc-repositories)))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
   (mapcar (lambda (user) (update-user-admin-status user t)) (validate-users (getf data :users)))
-  (if *limit-to-active-users*
-   ; Only add admins if we're limiting
-   (mapcar #'create-user (remove-if-not #'forgerie-core:user-admin (validate-users (getf data :users))))
-   (mapcar #'create-user (validate-users (getf data :users))))
+  (mapcar #'create-user (remove-if-not #'user-must-be-migrated (validate-users (getf data :users))))
   (mapcar #'create-project vc-repositories)
   (loop
    :with moved-forward := t
