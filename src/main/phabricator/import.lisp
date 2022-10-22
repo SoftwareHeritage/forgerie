@@ -955,6 +955,10 @@
   ((string= newvalue "needs-revision") :reject)
   ((string= newvalue "reject") :reject)
   ((string= newvalue "rejected") :reject)
+  ((string= newvalue "claim") :claim)
+  ((string= newvalue "reclaim") :claim)
+  ((string= newvalue "resign") :resign)
+  ((string= newvalue "rethink") :plan-changes)
   (t (error "unknown differential action ~A" newvalue))))
 
 (defun convert-differential-action-to-core (action)
