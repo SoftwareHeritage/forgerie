@@ -1073,7 +1073,7 @@
  (cond
   ((find status (list "open" "wip") :test #'string=)
    :open)
-  ((find status (list "duplicate" "invalid" "resolved" "spite" "wontfix") :test #'string=)
+  ((find status (list "duplicate" "invalid" "resolved" "spite" "wontfix" "migrated") :test #'string=)
    :closed)
   (t (error "Unknown task status: ~A" status))))
 
