@@ -270,6 +270,13 @@
            ("visibility" . "public"))))))))
    *group-structure*)))
 
+(defun get-namespace-id (namespace-path)
+ (let ((mapped-item
+        (find-mapped-item :group namespace-path)))
+  (if mapped-item
+   (mapped-item-id mapped-item)
+   (getf (first (get-request "namespaces" :parameters `(("search" . ,namespace-path)))) :id))))
+
 (defun normalize-pubkey (pubkeystr)
  "Compare ssh keys using algo and hash (first two words), ignoring key title"
  (let ((split (uiop:split-string pubkeystr)))
@@ -487,8 +494,7 @@
      (namespace-path (namespace-for-repo vc-repository))
      (namespace-id
       (cond
-       (namespace-path
-        (mapped-item-id (find-mapped-item :group namespace-path)))
+       (namespace-path (get-namespace-id namespace-path))
        (*default-group*
         (mapped-item-id (find-mapped-item :group :default-group)))))
      (gl-project-path (format nil "~A/~A" (or namespace-path (getf *default-group* :path)) (forgerie-core:vc-repository-slug vc-repository)))
