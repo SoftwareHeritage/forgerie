@@ -644,10 +644,7 @@
      (ensure-directories-exist *file-transfer-temporary-dir*))
     (let
      ((link-path
-       (pathname
-        (format nil "~A~A"
-         *file-transfer-temporary-dir*
-         (forgerie-core:file-name file)))))
+       (merge-pathnames (sb-ext:parse-native-namestring (forgerie-core:file-name file)) *file-transfer-temporary-dir*)))
      (unwind-protect
       (progn
        (sb-posix:symlink (pathname (forgerie-core:file-location file)) link-path)
