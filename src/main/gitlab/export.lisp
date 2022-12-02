@@ -1010,13 +1010,22 @@
      (update-mapping (:members-added-to-project (forgerie-core:vc-repository-slug vc-repository)))))
    vc-repositories)))
 
-(defun create-local-checkout (project)
- (when (not (probe-file (format nil "~A~A" *working-directory* (getf project :path))))
-  (ensure-directories-exist (format nil "~A~A/" *working-directory* (getf project :path)))
-  (git-cmd project "clone" "-o" "gitlab" (getf project :ssh_url_to_repo) "."))
- (git-cmd-code project "am" "--abort")
- (git-cmd project "reset" "--hard" "HEAD")
- (git-cmd project "clean" "-fdx"))
+(defun create-local-checkout (project vc-repository)
+ (let ((working-path (format nil "~A~A" *working-directory* (getf project :path))))
+  (when (not (probe-file working-path))
+   (ensure-directories-exist (format nil "~A/" working-path))
+   (git-cmd project "clone" (forgerie-core:vc-repository-git-location vc-repository) ".")
+   (git-cmd project "remote" "add" "gitlab" (getf project :ssh_url_to_repo))
+   (git-cmd project "fetch" "gitlab" "refs/heads/generated-differential-*:refs/heads/generated-differential-*")
+   (git-cmd project "fetch" "gitlab")
+   (when (/= 0 (git-cmd-code project
+                "merge-base" "--is-ancestor"
+                "HEAD" (format nil "gitlab/~A" (forgerie-core:vc-repository-default-branch-name vc-repository))))
+    (error (format nil "~A on phabricator is not ancestor of gitlab; merge needed" (getf project :path))))
+   (git-cmd project "push" "gitlab" "--tags"))
+  (git-cmd-code project "am" "--abort")
+  (git-cmd project "reset" "--hard" "HEAD")
+  (git-cmd project "clean" "-fdx")))
 
 (defun create-change-comments (gl-mr change)
  (let*
@@ -1238,7 +1247,7 @@
      ; to create all the branches and whatnot.  The other option would be to add a mapping for
      ; the git work we need to do, but this seemed more elegant.
      (process-note-text (forgerie-core:merge-request-description mr) (getf project :id))
-     (create-local-checkout project)
+     (create-local-checkout project vc-repo)
      (git-cmd project "branch" "-f"
       (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
       (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
