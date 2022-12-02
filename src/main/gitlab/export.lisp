@@ -822,7 +822,11 @@
       *notes-mode*
       (not (find-mapped-item :ticket-completed (forgerie-core:ticket-id ticket))))
      (let
-      ((gl-ticket (get-request (format nil "projects/~A/issues/~A" project-id (forgerie-core:ticket-id ticket)))))
+      ((gl-ticket
+        (get-request
+         (format nil "projects/~A/issues/~A"
+          project-id
+          (mapped-item-iid (find-mapped-item :ticket (forgerie-core:ticket-id ticket)))))))
       (mapc
        (lambda (action-or-note)
         (typecase action-or-note
