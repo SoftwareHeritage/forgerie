@@ -1032,7 +1032,10 @@
  (let
   ((branchname (repository-defaultbranch repository-def)))
   (if
-   (or (not branchname) (string= "" branchname))
+   (or
+    (not branchname)
+    (string= "" branchname)
+    (string= "null" branchname))
    "master"
    branchname)))
 
