@@ -57,5 +57,5 @@
      mapping-error
      (mapping-errors)))
    (with-open-file (str (mapping-errors-file) :direction :output :if-exists :append :if-does-not-exist :create)
-    (format str "~S" mapping-error)))
+    (format str "~S~%" mapping-error)))
   (forgerie-core:check-for-stop)))
