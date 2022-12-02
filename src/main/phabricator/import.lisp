@@ -977,7 +977,13 @@
      ((find (differential-revision-status revision-def) (list "changes-planned" "needs-review" "needs-revision" "accepted" "draft") :test #'string=)
       :open)
      (t (error "Unknown revision type: ~A" (differential-revision-status revision-def)))))
-   (core-repository (convert-repository-to-core (differential-revision-repository revision-def))))
+   (core-repository (convert-repository-to-core (differential-revision-repository revision-def)))
+   (actions
+    (remove-duplicates
+     (mapcar #'convert-differential-action-to-core (differential-revision-actions revision-def))
+     :test (lambda (a b)
+            (every (lambda (f) (equalp (funcall f a) (funcall f b)))
+             (list #'forgerie-core:merge-request-action-author #'forgerie-core:merge-request-action-date #'forgerie-core:merge-request-action-type))))))
 
   (forgerie-core:make-merge-request
    :id (differential-revision-id revision-def)
@@ -1008,7 +1014,7 @@
    :changes (mapcar #'convert-change-to-core (differential-revision-related-commits revision-def))
    :other-change-comments (mapcar #'convert-change-comment-to-core (differential-revision-change-comments revision-def))
    :notes (mapcar #'convert-differential-comment-to-core (differential-revision-comments revision-def))
-   :actions (mapcar #'convert-differential-action-to-core (differential-revision-actions revision-def)))))
+   :actions actions)))
 
 (defun convert-access-policy-to-core (repository-def)
  (let ((viewpolicy (repository-viewpolicy repository-def)))
