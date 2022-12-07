@@ -903,72 +903,73 @@
  (if (forgerie-core:email-is-verified email) "true" "false"))
 
 (defun create-user (user)
- (when-unmapped-with-update (:user (forgerie-core:user-username user))
-  (let
-   ((user-on-gitlab
-     (first (get-request "users"
-             :parameters
-             `(("username" . ,(forgerie-core:user-username user)))))))
-   (if user-on-gitlab
-    ;; user exists
-    (progn
-     (unless (getf user-on-gitlab :is_admin)
-      (set-gitlab-admin-status (getf user-on-gitlab :id) t))
-     user-on-gitlab)
+ (if (forgerie-core:user-username user)
+  (when-unmapped-with-update (:user (forgerie-core:user-username user))
+   (let
+    ((user-on-gitlab
+      (first (get-request "users"
+              :parameters
+              `(("username" . ,(forgerie-core:user-username user)))))))
+    (if user-on-gitlab
+     ;; user exists
+     (progn
+      (unless (getf user-on-gitlab :is_admin)
+       (set-gitlab-admin-status (getf user-on-gitlab :id) t))
+      user-on-gitlab)
 
-    ;; create user, handling avatar + emails
-    (let*
-     ((avatar (forgerie-core:user-avatar user))
-      (avatar
-       (when avatar
-        (if (> (* 1024 200) (forgerie-core:file-size avatar))
-         avatar
-         (progn
-          (forgerie-core:add-mapping-error
-           :user-avatar-too-big
-           (forgerie-core:user-username user)
-           (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (forgerie-core:file-size avatar)))))))
-      (avatar-filename
-       (when avatar
-        (if
-         (find-if
-          (lambda (ext) (cl-ppcre:scan (format nil "~A$" ext) (forgerie-core:file-name avatar)))
-          (list "png" "jpg" "jpeg" "gif" "bmp" "tiff" "ico" "webp"))
-         (forgerie-core:file-name avatar)
-         (format nil "~A.~A" (forgerie-core:file-name avatar)
-          (cond
-           ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
-           (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
-      (avatar-filepath-with-mimetype
-       (when avatar-filename
-        (format nil "~A.~A"
-         (forgerie-core:file-location avatar)
-         (subseq (forgerie-core:file-mimetype avatar) 6))))
-      (gl-user
-       (progn
-        (when avatar-filepath-with-mimetype
-         (uiop:copy-file (forgerie-core:file-location avatar) avatar-filepath-with-mimetype))
-        ;; using the new make-request implementation (dexador) does not work
-        ;; so use the previous slower implementation which works
-        (post-request
-         "users"
-         `(("name" . ,(forgerie-core:user-name user))
-           ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
+     ;; create user, handling avatar + emails
+     (let*
+      ((avatar (forgerie-core:user-avatar user))
+       (avatar
+        (when avatar
+         (if (> (* 1024 200) (forgerie-core:file-size avatar))
+          avatar
+          (progn
+           (forgerie-core:add-mapping-error
+            :user-avatar-too-big
+            (forgerie-core:user-username user)
+            (format nil "User ~A's avatar is ~A, which is bigger than the allowed 200k" (forgerie-core:user-username user) (forgerie-core:file-size avatar)))))))
+       (avatar-filename
+        (when avatar
+         (if
+          (find-if
+           (lambda (ext) (cl-ppcre:scan (format nil "~A$" ext) (forgerie-core:file-name avatar)))
+           (list "png" "jpg" "jpeg" "gif" "bmp" "tiff" "ico" "webp"))
+          (forgerie-core:file-name avatar)
+          (format nil "~A.~A" (forgerie-core:file-name avatar)
+           (cond
+            ((cl-ppcre:scan "^image/" (forgerie-core:file-mimetype avatar)) (subseq (forgerie-core:file-mimetype avatar) 6))
+            (t (error (format nil "Don't know profile mimetype ~A" (forgerie-core:file-mimetype avatar)))))))))
+       (avatar-filepath-with-mimetype
+        (when avatar-filename
+         (format nil "~A.~A"
+          (forgerie-core:file-location avatar)
+          (subseq (forgerie-core:file-mimetype avatar) 6))))
+       (gl-user
+        (progn
+         (when avatar-filepath-with-mimetype
+          (uiop:copy-file (forgerie-core:file-location avatar) avatar-filepath-with-mimetype))
+         ;; using the new make-request implementation (dexador) does not work
+         ;; so use the previous slower implementation which works
+         (post-request
+          "users"
+          `(("name" . ,(forgerie-core:user-name user))
+            ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
                                         ; Everyone must be an admin to make some of the other import things work correctly
                                         ; and then admin must be removed after
-           ("admin" . "true")
-           ("reset_password" . "true")
-           ("skip_confirmation" . ,(email-verified-to-string (forgerie-core:user-primary-email user)))
-           ("username" . ,(forgerie-core:user-username user))
-           ,@(when avatar-filepath-with-mimetype
-              `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
-     (mapcar
-      (lambda (email)
-       (post-request (format nil "/users/~A/emails" (getf gl-user :id))
-        `(("email" . ,(forgerie-core:email-address email))
-          ("skip_confirmation" . ,(email-verified-to-string email)))))
-      (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
-     gl-user)))))
+            ("admin" . "true")
+            ("reset_password" . "true")
+            ("skip_confirmation" . ,(email-verified-to-string (forgerie-core:user-primary-email user)))
+            ("username" . ,(forgerie-core:user-username user))
+            ,@(when avatar-filepath-with-mimetype
+               `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
+      (mapcar
+       (lambda (email)
+        (post-request (format nil "/users/~A/emails" (getf gl-user :id))
+         `(("email" . ,(forgerie-core:email-address email))
+           ("skip_confirmation" . ,(email-verified-to-string email)))))
+       (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
+      gl-user))))))
 
 (defun set-gitlab-admin-status (gl-user-id should-be-admin)
  (put-request
@@ -1164,7 +1165,9 @@
    (let*
     ((action-username
       (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-action-author action))))
-     (action-user-id (getf (retrieve-mapping :user action-username) :id)))
+     (action-user-id (if action-username
+                      (getf (retrieve-mapping :user action-username) :id)
+                      *migration-user-id*)))
     (case (forgerie-core:merge-request-action-type action)
      ((:abandon :close)
       ;; Write a synthetic note explaining why the MR is closed
