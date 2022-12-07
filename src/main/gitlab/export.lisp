@@ -348,7 +348,6 @@
    (vc-repositories (validate-vc-repositories (getf data :vc-repositories) (getf data :projects)))
    (tickets (remove-if-not #'identity (validate-tickets (getf data :tickets) vc-repositories)))
    (merge-requests (validate-merge-requests (getf data :merge-requests) vc-repositories)))
-  (mapcar (lambda (user) (update-user-admin-status user t)) (validate-users (getf data :users)))
   (mapcar #'create-user (remove-if-not #'user-must-be-migrated (validate-users (getf data :users))))
   (mapcar #'create-project vc-repositories)
   (loop
@@ -396,8 +395,7 @@
       (push first-error *note-mapping-skips*))))
   (mapcar (lambda (ticket) (create-ticket-links ticket vc-repositories)) tickets)
   (mapcar #'add-commit-comments vc-repositories)
-  (mapcar #'update-project-archived-status vc-repositories)
-  (mapcar #'update-user-admin-status (validate-users (getf data :users)))))
+  (mapcar #'update-project-archived-status vc-repositories)))
 
 (defun add-commit-comments (vc-repository)
  (single-project-check (forgerie-core:vc-repository-name vc-repository)
@@ -543,32 +541,74 @@
     (let ((gl-project (find-mapped-item :project (forgerie-core:vc-repository-slug vc-repository))))
      (post-request (format nil "projects/~A/archive" (mapped-item-id gl-project)) nil))))))
 
-(defun update-event-date (obj-type obj-id new-date &key extra-filter new-author)
- (let
+(defun update-object-author-date (obj-type obj-id author new-date
+                                  &key
+                                  author-field
+                                  update-created-at
+                                  update-updated-at
+                                  update-closed-at
+                                  update-event
+                                  update-label-events
+                                  update-resource-state-events
+                                  update-metrics-created-at
+                                  update-metrics-updated-at
+                                  update-metrics-latest-closed-at
+                                  update-system-notes)
+ (let*
   ((find-ev-command
-    (format nil "Event.where(:target => ~A, :target_type => '~A').where(\"created_at > ?\", action_time)~@[~A~].order(:created_at => 'DESC').first"
-     obj-id obj-type extra-filter)))
+    (format nil "Event.where(:target => ~A, :target_type => '~A').where('created_at > ?', action_time).order(:created_at => 'DESC').first"
+     obj-id obj-type))
+   (author-username (forgerie-core:user-username (ensure-user-created author)))
+   (author-id
+    (if author-username
+     (getf (retrieve-mapping :user author-username) :id)
+     *migration-user-id*))
+   (author-field (if update-created-at "author_id" "updated_by_id")))
   (rails-commands-with-recovery
    `(
-     ,(format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
-     ,(rails-wait-for "ev" find-ev-command)
-     ,@(when new-author (list (format nil "ev.author_id = ~A" new-author)))
-     "ev.created_at = action_time"
-     "ev.updated_at = action_time"
-     "ev.save"))))
+     ,(format nil "action_time = Time.parse('~A')" (to-iso-8601 new-date))
+     ,(format nil "obj = ~A.find(~A)" obj-type obj-id)
+     ,(format nil "author_id = ~A" author-id)
+     ,(format nil "migration_user_id = ~A" *migration-user-id*)
+     ,@(when update-created-at '("obj.created_at = action_time"))
+     ,@(when update-updated-at '("obj.updated_at = action_time"))
+     ,@(when update-closed-at '("obj.closed_at = action_time"))
+     ,@(when author-field (list (format nil "obj.~A = author_id" author-field)))
+     ,@(when (or update-metrics-created-at update-metrics-updated-at update-metrics-latest-closed-at)
+        `(,@(when update-metrics-updated-at '("obj.metrics.updated_at = action_time"))
+          ,@(when update-metrics-created-at '("obj.metrics.created_at = action_time"))
+          ,@(when update-metrics-latest-closed-at '("obj.metrics.latest_closed_at = action_time"))
+          "obj.metrics.save"))
+     ,@(when update-label-events
+        '("obj.resource_label_events.where('created_at > ?', action_time).update(created_at: action_time, user_id: author_id)"))
+     ,@(when update-system-notes
+        (list
+         (format nil
+          "obj.notes.where(system: true, author_id: ~A).where('created_at > ?', action_time).update(created_at: action_time, updated_at: action_time, author_id: ~A)"
+          *migration-user-id* author-id)))
+     ,@(when update-event
+        `(,(rails-wait-for "ev" find-ev-command)
+          ,(format nil "ev.author_id = ~A" author-id)
+          "ev.created_at = action_time"
+          "ev.updated_at = action_time"
+          "ev.save"))
+     ,@(when update-resource-state-events
+        '("obj.resource_state_events.where('created_at > ?', action_time).update(user_id: author_id, created_at: action_time)"))
+     "obj.save"))))
 
-(defun update-updated-at (obj-type obj-id new-date &key metrics created-at latest-closed-at)
- (rails-commands-with-recovery
-  `(,(format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 new-date))
-    ,(format nil "obj = ~A.find(~A)" obj-type obj-id)
-    "obj.updated_at = action_time"
-    ,@(when created-at '("obj.created_at = action_time"))
-    ,@(when metrics
-       `("obj.metrics.updated_at = action_time"
-         ,@(when created-at '("obj.metrics.created_at = action_time"))
-         ,@(when latest-closed-at '("obj.metrics.latest_closed_at = action_time"))
-         "obj.metrics.save"))
-    "obj.save")))
+(defun subscribe-users-to-object (obj-type obj-id users)
+ (let
+  ((filtered-users
+    (remove-if (lambda (u) (not (forgerie-core:user-username u))) users)))
+  (when filtered-users
+   (rails-commands-with-recovery
+    (cons
+     (format nil "obj = ~A.find(~A)" obj-type obj-id)
+     (mapcar
+      (lambda (u)
+       (format nil "obj.subscribe(User.find_by_username('~A'))"
+        (forgerie-core:user-username (ensure-user-created u))))
+      filtered-users))))))
 
 (defun mapped-item-reference (project-id item)
  (let*
@@ -625,10 +665,16 @@
         (post-request
          (format nil "/~A~A/~A/notes"
           (if project-id (format nil "projects/~A/" project-id) "") item-type item-id)
-         `(("body" . ,note-text)
-           ("created_at" . ,(to-iso-8601 (forgerie-core:note-date note))))
-         :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:note-author note))))))
-      (update-event-date "Note" (getf created-note :id) (forgerie-core:note-date note))
+         `(("body" . ,note-text)))))
+      (update-object-author-date
+       "Note"
+       (getf created-note :id)
+       (forgerie-core:note-author note)
+       (forgerie-core:note-date note)
+       :author-field "author"
+       :update-created-at t
+       :update-updated-at t
+       :update-event t)
       created-note))))))
 
 (defvar *file-transfer-temporary-dir* nil)
@@ -704,13 +750,18 @@
       (when ticket-changes
        (put-request
         (format nil "projects/~A/issues/~A" (getf gl-ticket :project_id) (getf gl-ticket :iid))
-        `(("updated_at" . ,action-date-str)
-          ,@ticket-changes)
-        :sudo author-username)
-       (when update-event
-        (update-event-date "Issue"
-         (getf gl-ticket :id)
-         (forgerie-core:ticket-action-date action))))))
+        ticket-changes)
+       (update-object-author-date
+        "Issue" (getf gl-ticket :id)
+        (forgerie-core:ticket-action-author action)
+        (forgerie-core:ticket-action-date action)
+        :author-field "updated_by"
+        :update-updated-at t
+        :update-closed-at (find '("state_event" . "close") ticket-changes :test #'equalp)
+        :update-event update-event
+        :update-resource-state-events update-event
+        :update-label-events t
+        :update-system-notes t))))
     (case action-type
      (:open
       (change-ticket
@@ -753,11 +804,16 @@
   (let
    ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
    (if vc-repos (forgerie-core:vc-repository-name (car vc-repos)) (getf *default-project* :name)))
-  (when (project-for-ticket ticket vc-repositories)
+  (when (or
+         (find-mapped-item :ticket (forgerie-core:ticket-id ticket))
+         (project-for-ticket ticket vc-repositories))
    (when-unmapped (:ticket-completed (forgerie-core:ticket-id ticket))
     (let*
-     ((project (project-for-ticket ticket vc-repositories))
-      (project-id (getf project :id))
+     ((mapped-ticket (find-mapped-item :ticket (forgerie-core:ticket-id ticket)))
+      (project-id
+       (if mapped-ticket
+        (mapped-item-project-id mapped-ticket)
+        (getf (project-for-ticket ticket vc-repositories) :id)))
       (actions-and-notes
        (stable-sort
         (copy-list
@@ -802,23 +858,25 @@
              ,(format-labels-for-post
                (mapcar #'forgerie-core:project-name (forgerie-core:ticket-projects ticket))))
             ("confidential" . ,(if (forgerie-core:ticket-confidential ticket) "true" "false"))
-            ("description" .  ,(process-note-text (append orig-description (list (ticket-suffix ticket))) project-id))
-            ("created_at" . ,(to-iso-8601 (forgerie-core:ticket-date ticket))))
-          :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:ticket-author ticket))))))
+            ("description" .  ,(process-note-text (append orig-description (list (ticket-suffix ticket))) project-id))))))
        (when (/= (getf gl-ticket :iid) (forgerie-core:ticket-id ticket))
         (forgerie-core:add-mapping-error
          :ticket-iid-not-set
          (forgerie-core:ticket-id ticket)
          (format nil "Ticket iid ignored by gitlab for ~A (~A)" (forgerie-core:ticket-id ticket) (getf (getf gl-ticket :references) :full))))
-       (update-updated-at "Issue" (getf gl-ticket :id) (forgerie-core:ticket-date ticket) :metrics t :created-at t)
-       (update-event-date "Issue" (getf gl-ticket :id) (forgerie-core:ticket-date ticket))
-       (mapc
-        (lambda (u)
-         (post-request
-          (format nil "projects/~A/issues/~A/subscribe" (getf gl-ticket :project_id) (getf gl-ticket :iid))
-          nil
-          :sudo (forgerie-core:user-username (ensure-user-created u))))
-        (forgerie-core:ticket-subscribers ticket))
+       (update-object-author-date
+        "Issue"
+        (getf gl-ticket :id)
+        (forgerie-core:ticket-author ticket)
+        (forgerie-core:ticket-date ticket)
+        :update-created-at t
+        :update-updated-at t
+        :author-field "author"
+        :update-event t
+        :update-metrics-created-at t
+        :update-metrics-updated-at t
+        :update-label-events t)
+       (subscribe-users-to-object "Issue" (getf gl-ticket :id) (forgerie-core:ticket-subscribers ticket))
        (update-mapping (:ticket (forgerie-core:ticket-id ticket)) gl-ticket)))
     (when
      (and
@@ -910,11 +968,7 @@
               `(("username" . ,(forgerie-core:user-username user)))))))
     (if user-on-gitlab
      ;; user exists
-     (progn
-      (unless (getf user-on-gitlab :is_admin)
-       (set-gitlab-admin-status (getf user-on-gitlab :id) t))
-      user-on-gitlab)
-
+     user-on-gitlab
      ;; create user, handling avatar + emails
      (let*
       ((avatar (forgerie-core:user-avatar user))
@@ -953,12 +1007,10 @@
           "users"
           `(("name" . ,(forgerie-core:user-name user))
             ("email" . ,(forgerie-core:email-address (forgerie-core:user-primary-email user)))
-                                        ; Everyone must be an admin to make some of the other import things work correctly
-                                        ; and then admin must be removed after
-            ("admin" . "true")
             ("reset_password" . "true")
             ("skip_confirmation" . ,(email-verified-to-string (forgerie-core:user-primary-email user)))
             ("username" . ,(forgerie-core:user-username user))
+            ,@(when (forgerie-core:user-admin user) '(("admin" . "true")))
             ,@(when avatar-filepath-with-mimetype
                `(("avatar" . ,(pathname avatar-filepath-with-mimetype)))))))))
       (mapcar
@@ -968,22 +1020,6 @@
            ("skip_confirmation" . ,(email-verified-to-string email)))))
        (remove-if #'forgerie-core:email-is-primary (forgerie-core:user-emails user)))
       gl-user))))))
-
-(defun set-gitlab-admin-status (gl-user-id should-be-admin)
- (put-request
-  (format nil "/users/~A" gl-user-id)
-  `(("admin" . ,(if should-be-admin "true" "false")))))
-
-(defun update-user-admin-status (user &optional override)
- (let
-  ((should-be-admin (or override (forgerie-core:user-admin user)))
-   (forgerie-username (forgerie-core:user-username user)))
-  (when forgerie-core:*debug* (format t "Requesting is_admin:~A for user ~A~%" should-be-admin forgerie-username))
- (when
-  (find-mapped-item :user forgerie-username)
-  (let
-   ((gl-user (retrieve-mapping :user forgerie-username)))
-   (set-gitlab-admin-status (getf gl-user :id) should-be-admin)))))
 
 (defun add-users-to-projects (vc-repositories users)
  (let
@@ -1065,14 +1101,17 @@
                 (list (cons "position[old_line]" (princ-to-string (cadr (forgerie-core:merge-request-change-comment-new-line comment))))))
              ("position[old_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
              ("position[new_path]" . ,(forgerie-core:merge-request-change-comment-file comment))
-             ("body" . ,note-text)
-             ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
-           :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-change-comment-author comment))))))
+             ("body" . ,note-text)))))
         (when (first (getf discussion :notes))
-         (update-event-date
+         (update-object-author-date
           "DiffNote"
           (getf (first (getf discussion :notes)) :id)  ;; get the id of the first note in the discussion, created by the previous post-request
-          (forgerie-core:merge-request-change-comment-date comment)))
+          (forgerie-core:merge-request-change-comment-author comment)
+          (forgerie-core:merge-request-change-comment-date comment)
+          :author-field "author"
+          :update-created-at t
+          :update-updated-at t
+          :update-event t))
         (mapcar
          (lambda (comment)
           (let
@@ -1083,13 +1122,16 @@
              ((diff-note
                (post-request
                 (format nil "/projects/~A/merge_requests/~A/discussions/~A/notes" (getf gl-mr :project_id) (getf gl-mr :iid) (getf discussion :id))
-                `(("body" . ,note-text)
-                  ("created_at" . ,(to-iso-8601 (forgerie-core:merge-request-change-comment-date comment))))
-                :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-change-comment-author comment))))))
-             (update-event-date
+                `(("body" . ,note-text)))))
+             (update-object-author-date
               "DiffNote"
               (getf diff-note :id)
-              (forgerie-core:merge-request-change-comment-date comment))))))
+              (forgerie-core:merge-request-change-comment-author comment)
+              (forgerie-core:merge-request-change-comment-date comment)
+              :author-field "author"
+              :update-created-at t
+              :update-updated-at t
+              :update-event t)))))
          (forgerie-core:merge-request-change-comment-replies comment)))
        (http-error (e)
         (cond
@@ -1112,25 +1154,7 @@
 (defun record-mr-action (gl-mr forgerie-mr action)
  (when-unmapped (:merge-request-action (forgerie-core:merge-request-action-id action))
   (flet
-   ((update-last-mr-event (&key new-author)
-     (update-event-date "MergeRequest"
-      (getf gl-mr :id)
-      (forgerie-core:merge-request-action-date action)
-      :new-author new-author))
-    (update-last-mr-rse ()
-     (rails-commands-with-recovery
-      (list
-       (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
-       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-       "rse = mr.resource_state_events[-1]"
-       "rse.created_at = action_time"
-       "rse.save")))
-    (update-mr-updated-at (&key latest-closed-at)
-     (update-updated-at "MergeRequest"
-      (getf gl-mr :id)
-      (forgerie-core:merge-request-action-date action)
-      :metrics t :latest-closed-at latest-closed-at))
-    (update-last-mr-approval (user-id)
+   ((update-last-mr-approval (user-id)
      (rails-commands-with-recovery
       (list
        (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
@@ -1140,16 +1164,6 @@
        "approval.updated_at = action_time"
        (format nil "approval.user_id = ~A" user-id)
        "approval.save")))
-    (update-last-mr-system-note (user-id)
-     (rails-commands-with-recovery
-      (list
-       (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
-       (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-       (rails-wait-for "note" "mr.notes.where(:system => true).order(:created_at => 'DESC').first")
-       "note.created_at = action_time"
-       "note.updated_at = action_time"
-       (format nil "note.author_id = ~A" user-id)
-       "note.save")))
     (update-mr-state (newstate)
      (setf *mr-state-map* (acons (getf gl-mr :id) newstate *mr-state-map*)))
     (get-mr-state () (or (cdr (assoc (getf gl-mr :id) *mr-state-map*)) (getf gl-mr :state)))
@@ -1175,22 +1189,37 @@
       (when (string= (get-mr-state) "opened")
        (put-request
         (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
-        '(("state_event" . "close"))
-        :sudo action-username)
-       (update-last-mr-event)
-       (update-last-mr-rse)
-       (update-mr-updated-at :latest-closed-at t)
+        '(("state_event" . "close")))
+       (update-object-author-date
+        "MergeRequest"
+        (getf gl-mr :id)
+        (forgerie-core:merge-request-action-author action)
+        (forgerie-core:merge-request-action-date action)
+        :update-created-at nil
+        :update-updated-at t
+        :author-field "updated_by"
+        :update-metrics-latest-closed-at t
+        :update-metrics-updated-at t
+        :update-resource-state-events t
+        :update-event t)
        (update-mr-state "closed")))
      (:ready
       ;; Reopen the MR
       (when (string= (get-mr-state) "closed")
        (put-request
         (format nil "/projects/~A/merge_requests/~A" (getf gl-mr :project_id) (getf gl-mr :iid))
-        '(("state_event" . "reopen"))
-        :sudo action-username)
-       (update-last-mr-event)
-       (update-last-mr-rse)
-       (update-mr-updated-at :latest-closed-at nil)
+        '(("state_event" . "reopen")))
+       (update-object-author-date
+        "MergeRequest"
+        (getf gl-mr :id)
+        (forgerie-core:merge-request-action-author action)
+        (forgerie-core:merge-request-action-date action)
+        :update-created-at nil
+        :update-updated-at t
+        :author-field "updated_by"
+        :update-metrics-updated-at t
+        :update-resource-state-events t
+        :update-event t)
        (update-mr-state "opened")))
      (:accept
       (write-action-note)
@@ -1208,33 +1237,23 @@
              nil)
             (t (error e)))))))
        (when post-result
-        (update-last-mr-event :new-author action-user-id)
-        (update-last-mr-approval action-user-id)
-        (update-last-mr-system-note action-user-id))))
+        (update-object-author-date
+         "MergeRequest"
+         (getf gl-mr :id)
+         (forgerie-core:merge-request-action-author action)
+         (forgerie-core:merge-request-action-date action)
+         :update-system-notes t
+         :update-event t)
+        (update-last-mr-approval action-user-id))))
      (:reject
       (write-action-note)
-      (let
-       ((post-result
-         (handler-case
-          (post-request
-           (format nil "/projects/~A/merge_requests/~A/unapprove" (getf gl-mr :project_id) (getf gl-mr :iid))
-           nil
-           :sudo action-username)
-          (http-error (e)
-           (cond
-            ((= 404 (http-error-code e))
-             ;; merge request wasn't approved yet, ignore
-             (when forgerie-core:*debug*
-              (format t "Failed to unapprove MR D~A: ~A" (forgerie-core:merge-request-id forgerie-mr) e))
-             nil)
-            ((= 403 (http-error-code e))
-             ;; merge request wasn't approved yet, ignore
-             (when forgerie-core:*debug*
-              (format t "Failed to unapprove MR D~A: ~A" (forgerie-core:merge-request-id forgerie-mr) e))
-             nil)
-            (t (error e)))))))
-       (when post-result
-        (update-last-mr-system-note action-user-id)))))))
+      (rails-commands-with-recovery
+       (list
+        (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
+        (format nil "user = User.find_by_username('~A')" action-username)
+        (format nil "action_time = Time.parse('~A')" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
+        "::MergeRequests::RemoveApprovalService.new(project: mr.project, current_user: user).execute(mr)"
+        "mr.notes.where(system: true, author: user).where('created_at > ?', action_time).update(created_at: action_time, updated_at: action_time)"))))))
   (update-mapping (:merge-request-action (forgerie-core:merge-request-action-id action)))))
 
 (defun create-merge-request (mr)
@@ -1288,11 +1307,18 @@
           `(("source_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
             ("target_branch" . ,(forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
             ("description" . ,(process-note-text (append (forgerie-core:merge-request-description mr) (list (merge-request-suffix mr))) (getf project :id)))
-            ("title" . ,(forgerie-core:merge-request-title mr)))
-          :sudo (forgerie-core:user-username (ensure-user-created (forgerie-core:merge-request-author mr))))))
-       (update-event-date "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr))
-       (update-updated-at "MergeRequest" (getf gl-mr :id) (forgerie-core:merge-request-date mr)
-        :created-at t :metrics t)
+            ("title" . ,(forgerie-core:merge-request-title mr))))))
+       (update-object-author-date
+        "MergeRequest"
+        (getf gl-mr :id)
+        (forgerie-core:merge-request-author mr)
+        (forgerie-core:merge-request-date mr)
+        :author-field "author"
+        :update-created-at t
+        :update-updated-at t
+        :update-event t
+        :update-metrics-created-at t
+        :update-metrics-updated-at t)
        gl-mr)))
    (when *notes-mode*
     (let
