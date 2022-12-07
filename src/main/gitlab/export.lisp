@@ -148,10 +148,8 @@
     ((namespace-path (namespace-for-repo repo))
      (namespace-id
       (cond
-       (namespace-path
-        (mapped-item-id (find-mapped-item :group namespace-path)))
-       (*default-group*
-        (mapped-item-id (find-mapped-item :group :default-group)))))
+       (namespace-path (get-namespace-id namespace-path))
+       (*default-group* (mapped-item-id (find-mapped-item :group :default-group)))))
      (project-path (format nil "~A/~A" (or namespace-path (getf *default-group* :path)) slug))
      (project (handler-case
                (get-request (format nil "projects/~A" (quri:url-encode project-path)))
