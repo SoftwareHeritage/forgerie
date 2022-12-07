@@ -1236,7 +1236,7 @@
              nil)
             (t (error e)))))))
        (when post-result
-        (update-last-mr-event)))))))
+        (update-last-mr-system-note action-user-id)))))))
   (update-mapping (:merge-request-action (forgerie-core:merge-request-action-id action)))))
 
 (defun create-merge-request (mr)
