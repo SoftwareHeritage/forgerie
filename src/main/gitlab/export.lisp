@@ -7,6 +7,7 @@
 (defvar *note-mapping-skips* nil)
 (defvar *notes-mode* nil)
 (defvar *files-to-upload* nil)
+(defvar *migration-user-id* nil)
 
 (defun validate-vc-repositories (vc-repositories projects)
  (let
@@ -277,6 +278,9 @@
    (mapped-item-id mapped-item)
    (getf (first (get-request "namespaces" :parameters `(("search" . ,namespace-path)))) :id))))
 
+(defun get-migration-user-id ()
+ (setf *migration-user-id* (getf (get-request "user") :id)))
+
 (defun normalize-pubkey (pubkeystr)
  "Compare ssh keys using algo and hash (first two words), ignoring key title"
  (let ((split (uiop:split-string pubkeystr)))
@@ -333,6 +337,7 @@
  (setf *working-directory* (format nil "~Agitlab/" forgerie-core:*working-directory*))
  (forgerie-core:check-for-stop)
  (ensure-directories-exist *working-directory*)
+ (get-migration-user-id)
  (when *single-project* (remove-single-project))
  (create-groups)
  (create-default-group)
@@ -1131,7 +1136,7 @@
       (list
        (format nil "action_time = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:merge-request-action-date action)))
        (format nil "mr = MergeRequest.find(~A)" (getf gl-mr :id))
-       "approval = mr.approvals.order(:created_at => 'DESC').first"
+       (format nil "approval = mr.approvals.where(user_id: ~A).order(created_at: 'DESC').first" *migration-user-id*)
        "approval.created_at = action_time"
        "approval.updated_at = action_time"
        (format nil "approval.user_id = ~A" user-id)
