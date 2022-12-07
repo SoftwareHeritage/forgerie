@@ -111,10 +111,10 @@
         :gitlab-ticket-assigned-to-multiple
         (forgerie-core:ticket-id ticket)
         (format nil
-         "Ticket with id ~A is assignable to multiple repositories:~%~{ * ~A~%~}"
+         "Ticket with id ~A is assignable to multiple repositories, assigning to default:~%~{ * ~A~%~}"
          (forgerie-core:ticket-id ticket)
          (mapcar #'forgerie-core:vc-repository-name vc-repos)))
-       nil)
+       ticket)
       (ticket))))
    tickets)))
 
@@ -305,7 +305,7 @@
 (defun project-for-ticket (ticket vc-repositories)
  (let
   ((vc-repos (ticket-assignable-vc-repositories ticket vc-repositories)))
-  (if vc-repos
+  (if (and vc-repos (= 1 (length vc-repos)))
    (find-gitlab-project (car vc-repos))
    (when (not (getf *default-project* :disable-tickets)) (default-project)))))
 
