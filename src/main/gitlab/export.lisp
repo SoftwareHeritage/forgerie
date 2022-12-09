@@ -523,7 +523,7 @@
           ("operations_access_level" . "disabled")
           ("container_registry_access_level" . "disabled")
           ("namespace_id" . ,namespace-id)))))
-     (working-path (format nil "~A~A/" *working-directory* (getf gl-project :path))))
+     (working-path (format nil "~Alocal-checkouts/~A/" *working-directory* (getf gl-project :path))))
     (when
      (getf gl-project :empty_repo)
      (when (not (probe-file working-path))
@@ -1015,7 +1015,7 @@
    vc-repositories)))
 
 (defun create-local-checkout (project vc-repository)
- (let ((working-path (format nil "~A~A" *working-directory* (getf project :path))))
+ (let ((working-path (format nil "~Alocal-checkouts/~A" *working-directory* (getf project :path))))
   (when (not (probe-file working-path))
    (ensure-directories-exist (format nil "~A/" working-path))
    (git-cmd project "clone" (forgerie-core:vc-repository-git-location vc-repository) ".")

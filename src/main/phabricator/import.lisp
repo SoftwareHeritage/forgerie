@@ -579,7 +579,7 @@
  (let*
   ((repository (get-repository (differential-revision-repositoryphid revision)))
    (user (get-user (differential-revision-authorphid revision)))
-   (path (format nil "~A/~A/" *working-directory* (repository-repositoryslug repository)))
+   (path (format nil "~A/local-checkouts/~A/" *working-directory* (repository-repositoryslug repository)))
    (raw-diff
     (dex:get
      (format nil
