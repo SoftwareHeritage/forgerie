@@ -897,7 +897,8 @@
           (create-ticket-action gl-ticket ticket action-or-note))
          (t (error "Unknown type"))))
        actions-and-notes)
-      (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket))))))))))
+      (when (find :ticket *write-completed-mappings*)
+       (update-mapping (:ticket-completed (forgerie-core:ticket-id ticket)))))))))))
 
 (defun create-ticket-links (ticket vc-repositories)
  (when
@@ -1347,7 +1348,8 @@
      (when (eql :closed (forgerie-core:merge-request-type mr))
       (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
       (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
-     (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr)))))))))
+     (when (find :merge-request *write-completed-mappings*)
+      (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr))))))))))
 
 (defun create-snippet (snippet)
  (single-project-check (getf *default-project* :name)
@@ -1408,4 +1410,5 @@
            (format nil "s.created_at = Time.parse(\"~A\")" (to-iso-8601 (forgerie-core:snippet-date snippet)))
            "s.author = u"
            "s.save"))
-         (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet))))))))))
+         (when (find :snippet *write-completed-mappings*)
+          (update-mapping (:snippet-completed (forgerie-core:snippet-id snippet)) gl-snippet)))))))))))

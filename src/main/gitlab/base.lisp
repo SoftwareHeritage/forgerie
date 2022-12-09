@@ -104,3 +104,8 @@ docker instead.")
  "A list of usernames of users that should always be migrated, even when only migrating
  active users. Useful to give all of your known contributors an account at once, even on
  a partial migration.")
+
+(defvar *write-completed-mappings* '(:merge-request :ticket :snippet)
+ "Write the <object-completed> mappings for the given object types to prevent
+  migrating further actions. Allows incremental migrations of some types of
+  objects.")
