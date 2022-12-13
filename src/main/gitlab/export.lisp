@@ -1346,8 +1346,11 @@
         (forgerie-core:merge-request-action (record-mr-action gl-mr mr action-or-note))))
       actions-and-notes)
      (when (eql :closed (forgerie-core:merge-request-type mr))
-      (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
-      (git-cmd project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))))
+      (when-unmapped-with-update (:merge-request-branches-deleted (forgerie-core:merge-request-id mr))
+       (progn
+        (git-cmd-code project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr)))
+        (git-cmd-code project "push" "gitlab" "--delete" (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+        nil)))
      (when (find :merge-request *write-completed-mappings*)
       (update-mapping (:merge-request-completed (forgerie-core:merge-request-id mr))))))))))
 
