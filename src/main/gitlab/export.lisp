@@ -794,7 +794,7 @@
        ((assignee-id
          (if new-value
           (getf (retrieve-mapping :user (forgerie-core:user-username (ensure-user-created new-value))) :id))))
-       (change-ticket `(("assignee_ids" . ,(format nil "[~@[~A~]]" assignee-id))))))
+       (change-ticket `(("assignee_ids" . ,(format nil "~A" (if assignee-id assignee-id 0)))))))
      (:subscribers)
      (otherwise (error "Unknown ticket action ~A" action-type)))))
   (update-mapping (:ticket-action (forgerie-core:ticket-action-id action)))))
