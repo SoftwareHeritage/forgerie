@@ -709,12 +709,31 @@
       (ignore-errors (delete-file link-path)))))))
   (retrieve-mapping :file-uploaded (forgerie-core:file-id file))))
 
+(defun create-label-in-default-group (label)
+ (when *default-group*
+  (when-unmapped-with-update (:default-group-label label)
+   (handler-case
+    (post-request
+     (format nil "groups/~A/labels" (quri:url-encode (getf *default-group* :path)))
+     `(("name" . ,label)
+       ("color" . "azure")))
+    (http-error (e)
+     (cond
+      ((= 409 (http-error-code e))
+       (get-request
+        (format nil "groups/~A/labels/~A" (quri:url-encode (getf *default-group* :path)) (quri:url-encode label))))
+      (t (error e))))))))
+
 (defun format-labels-for-post (issue-labels)
- (format nil "~{~A~^,~}"
-  (remove-if
-   (lambda (label)
-    (find label '("state:open" "state:resolved") :test #'string=))
-   issue-labels)))
+ (let
+  ((filtered-labels
+    (remove-if
+     (lambda (label)
+      (find label '("state:open" "state:resolved") :test #'string=))
+     issue-labels)))
+  (when *create-labels-in-default-group*
+   (mapc #'create-label-in-default-group filtered-labels))
+  (format nil "~{~A~^,~}" filtered-labels)))
 
 (defvar *ticket-labels-map* nil)
 (defvar *ticket-state-map* nil)

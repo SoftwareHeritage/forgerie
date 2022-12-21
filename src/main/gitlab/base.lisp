@@ -27,6 +27,9 @@
  while SLUG is the url slug.  If NIL, the projects will all be created at the
  top level.")
 
+(defvar *create-labels-in-default-group* t
+ "Whether to create all issue labels in the default group rather than in the individual projects")
+
 (defvar *group-structure* nil
  "A list of plists of the form '(:name NAME :path SLUG :parent SLUG) that
  define the base structure of groups configured in the gitlab instance")
