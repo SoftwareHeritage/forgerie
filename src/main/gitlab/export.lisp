@@ -1080,8 +1080,8 @@
    (git-cmd project "fetch" "gitlab")
    (when (/= 0 (git-cmd-code project
                 "merge-base" "--is-ancestor"
-                "HEAD" (format nil "gitlab/~A" (forgerie-core:vc-repository-default-branch-name vc-repository))))
-    (error (format nil "~A on phabricator is not ancestor of gitlab; merge needed" (getf project :path))))
+                (format nil "gitlab/~A" (forgerie-core:vc-repository-default-branch-name vc-repository)) "HEAD" ))
+    (error (format nil "~A on gitlab is not ancestor of phabricator; merge needed" (getf project :path))))
    (git-cmd project "push" "gitlab" "--tags"))
   (git-cmd-code project "am" "--abort")
   (git-cmd project "reset" "--hard" "HEAD")
