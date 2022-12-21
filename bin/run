@@ -13,4 +13,6 @@
 
 (ql:quickload :forgerie)
 
+(setf lparallel:*kernel* (lparallel:make-kernel 32))
+
 (forgerie-core:run :phabricator :gitlab)

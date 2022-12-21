@@ -226,7 +226,7 @@
   (if shallow task (annotate-task task))))
 
 (defun get-tasks ()
- (mapcar #'annotate-task
+ (lparallel:pmapcar #'annotate-task
   (query "select * from phabricator_maniphest.maniphest_task")))
 
 (defun attach-projects-to-repository (repo)
@@ -272,7 +272,7 @@
   (list
    :commits
    (cached "repository-commits" (repository-phid repo)
-    (mapcar
+    (lparallel:pmapcar
      (lambda (sha)
       (list
        :commitidentifier sha
@@ -427,7 +427,7 @@
      :comments (get-paste-comments paste))))
   (remove
    nil
-   (mapcar
+   (lparallel:pmapcar
     (lambda (paste)
      (let
       ((file (get-file (paste-filephid paste))))
@@ -526,7 +526,7 @@
  (cached
   "shas-and-details"
   (repository-phid repository)
-  (mapcar
+  (lparallel:pmapcar
    (lambda (sha) (list sha (get-details repository sha)))
    (cl-ppcre:split
     "\\n"
@@ -834,7 +834,7 @@
 (defun get-revisions ()
  (remove
   nil
-  (mapcar #'annotate-revision
+  (lparallel:pmapcar #'annotate-revision
    (remove-if
     (lambda (rev) (find (differential-revision-id rev) *revisions-to-skip*))
     (query "select id, title, summary, testplan, phid, status, repositoryphid, datecreated, authorphid, activediffphid from phabricator_differential.differential_revision")))))
