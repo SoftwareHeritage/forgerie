@@ -1082,7 +1082,7 @@
                 "merge-base" "--is-ancestor"
                 (format nil "gitlab/~A" (forgerie-core:vc-repository-default-branch-name vc-repository)) "HEAD" ))
     (error (format nil "~A on gitlab is not ancestor of phabricator; merge needed" (getf project :path))))
-   (git-cmd project "push" "gitlab" "--tags"))
+   (git-cmd project "push" "gitlab" ":" "--tags"))
   (git-cmd-code project "am" "--abort")
   (git-cmd project "reset" "--hard" "HEAD")
   (git-cmd project "clean" "-fdx")))
@@ -1293,9 +1293,12 @@
      ; the git work we need to do, but this seemed more elegant.
      (process-note-text (forgerie-core:merge-request-description mr) (getf project :id))
      (create-local-checkout project vc-repo)
-     (git-cmd project "branch" "-f"
-      (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
-      (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
+     (when (string/=
+            (forgerie-core:vc-repository-default-branch-name vc-repo)
+            (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr)))
+      (git-cmd project "branch" "-f"
+       (forgerie-core:branch-name (forgerie-core:merge-request-target-branch mr))
+       (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr)))))
      (git-cmd project "switch" "-C"
       (forgerie-core:branch-name (forgerie-core:merge-request-source-branch mr))
       (forgerie-core:commit-sha (forgerie-core:branch-commit (forgerie-core:merge-request-source-branch mr))))
